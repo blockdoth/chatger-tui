@@ -2,3 +2,18 @@
 name = "chatger-tui"
 version = "0.1.0"
 edition = "2024"
+
+[dependencies]
+crossterm = { version = "0.29.0", features = ["event-stream"] }
+ratatui = "0.29.0"
+log = { version = "0.4.27", features = ["std"] }
+tokio = { version = "1.46.1", features = ["full"] }
+async-trait = "0.1.88"
+chrono = "0.4.41"
+futures = "0.3.31"
+anyhow = "1.0.98"
+
+[lints.rust]
+unused_imports = "allow"
+unused = { level = "allow", priority = -1 }
+dead_code = "allow"

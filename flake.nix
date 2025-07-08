@@ -18,12 +18,9 @@
       ];
       perSystem =
         {
-          config,
-          self',
           inputs',
           pkgs,
           system,
-          lib,
           ...
         }:
         let

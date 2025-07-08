@@ -1,0 +1,7 @@
+.idea
+.envrc
+.direnv
+/target
+/result
+
+

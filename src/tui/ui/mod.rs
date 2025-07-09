@@ -1,3 +1,5 @@
+mod borders;
+
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -6,6 +8,7 @@ use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Padding, Paragraph, Wrap};
 
 use crate::tui::chat::{ChannelStatus, ChatMessageStatus, UserStatus};
+use crate::tui::ui::borders::{borders_channel, borders_chat_history, borders_input, borders_logs, borders_profile, borders_users};
 use crate::tui::{Focus, State};
 
 const HEADER_STYLE: Style = Style {
@@ -20,21 +23,28 @@ const PADDING: Padding = Padding::new(1, 1, 0, 0);
 
 pub fn draw(state: &State, frame: &mut Frame) {
     let main_area = frame.area();
-    let (app_area, info_area) = split_app_info(state, main_area);
+    let (app_area, info_area) = split_app_info_areas(state, main_area);
     let (channels_area, chat_area, users_area) = split_channel_chat_user_areas(state, app_area);
-    let (channels_area, profile_area) = split_channels_profile(state, channels_area);
-    let (chat_log, chat_input) = split_chatlog_chatinput_areas(state, chat_area);
+    let (channels_area, profile_area) = split_channels_profile_areas(state, channels_area);
+    let (chat_log_area, chat_input_area) = split_chatlog_chatinput_areas(state, chat_area);
 
-    // render_logs(state, frame, frame_area);
+    let chat_log_area = if state.show_logs {
+        let (chat_log_area, logs_area) = split_chat_log_areas(state, chat_log_area);
+        render_logs(state, frame, logs_area);
+        chat_log_area
+    } else {
+        chat_log_area
+    };
+
     render_channels(state, frame, channels_area);
     render_profile(state, frame, profile_area);
-    render_chat_history(state, frame, chat_log);
-    render_chat_input(state, frame, chat_input);
+    render_chat_history(state, frame, chat_log_area);
+    render_chat_input(state, frame, chat_input_area);
     render_users(state, frame, users_area);
     render_info(state, frame, info_area);
 }
 
-fn split_app_info(state: &State, area: Rect) -> (Rect, Rect) {
+fn split_app_info_areas(state: &State, area: Rect) -> (Rect, Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(0)
@@ -56,7 +66,7 @@ fn split_channel_chat_user_areas(state: &State, area: Rect) -> (Rect, Rect, Rect
     (chunks[0], chunks[1], chunks[2])
 }
 
-fn split_channels_profile(state: &State, area: Rect) -> (Rect, Rect) {
+fn split_channels_profile_areas(state: &State, area: Rect) -> (Rect, Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(0)
@@ -66,7 +76,7 @@ fn split_channels_profile(state: &State, area: Rect) -> (Rect, Rect) {
 }
 
 fn split_chatlog_chatinput_areas(state: &State, area: Rect) -> (Rect, Rect) {
-    let input_height = if state.focus == Focus::ChatHistory { 4 } else { 5 };
+    let input_height = if let Focus::ChatInput(_) = state.focus { 5 } else { 4 };
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -74,6 +84,32 @@ fn split_chatlog_chatinput_areas(state: &State, area: Rect) -> (Rect, Rect) {
         .constraints([Constraint::Fill(10), Constraint::Length(input_height)])
         .split(area);
     (chunks[0], chunks[1])
+}
+
+// Done manually because of issues with border highlights creating small shifts
+fn split_chat_log_areas(state: &State, area: Rect) -> (Rect, Rect) {
+    let left_width = area.width / 2 + (area.width % 2);
+    let right_width = area.width - left_width;
+
+    let offset = if let Focus::ChatHistory | Focus::ChatInput(_) = state.focus {
+        1
+    } else {
+        0
+    };
+
+    let left = Rect {
+        x: area.x,
+        y: area.y,
+        width: left_width + offset,
+        height: area.height,
+    };
+    let right = Rect {
+        x: area.x + left_width + offset,
+        y: area.y,
+        width: right_width - offset,
+        height: area.height,
+    };
+    (left, right)
 }
 
 fn render_channels(state: &State, frame: &mut Frame, area: Rect) {
@@ -94,26 +130,7 @@ fn render_channels(state: &State, frame: &mut Frame, area: Rect) {
         })
         .collect();
 
-    let (borders, border_style, border_corners) = match state.focus {
-        Focus::Channels => (
-            Borders::ALL,
-            Style::default().fg(Color::Cyan),
-            border::Set {
-                bottom_left: line::NORMAL.vertical_right,
-                bottom_right: line::NORMAL.cross,
-                top_right: line::NORMAL.horizontal_down,
-                ..border::PLAIN
-            },
-        ),
-        _ => (
-            Borders::TOP | Borders::LEFT | Borders::BOTTOM,
-            Style::default(),
-            border::Set {
-                bottom_left: line::NORMAL.vertical_right,
-                ..border::PLAIN
-            },
-        ),
-    };
+    let (borders, border_style, border_corners) = borders_channel(state);
     let widget = Paragraph::new(Text::from(channels)).block(
         Block::default()
             .padding(PADDING)
@@ -126,30 +143,7 @@ fn render_channels(state: &State, frame: &mut Frame, area: Rect) {
 }
 
 fn render_profile(state: &State, frame: &mut Frame, area: Rect) {
-    let (borders, border_style, border_corners) = match state.focus {
-        Focus::Channels => (
-            Borders::LEFT | Borders::RIGHT | Borders::BOTTOM,
-            Style::default(),
-            border::Set {
-                top_right: line::NORMAL.horizontal_down,
-                top_left: line::NORMAL.vertical_right,
-                bottom_left: line::NORMAL.vertical_right,
-                bottom_right: line::NORMAL.horizontal_up,
-                ..border::PLAIN
-            },
-        ),
-        _ => (
-            Borders::LEFT | Borders::BOTTOM,
-            Style::default(),
-            border::Set {
-                top_right: line::NORMAL.horizontal_down,
-                top_left: line::NORMAL.vertical_right,
-                bottom_left: line::NORMAL.vertical_right,
-                bottom_right: line::NORMAL.horizontal_up,
-                ..border::PLAIN
-            },
-        ),
-    };
+    let (borders, border_style, border_corners) = borders_profile(state);
     let lines = vec![Line::from(Span::from("")), Line::from(state.current_user.name.clone())];
 
     let border_style = Style::default();
@@ -214,50 +208,7 @@ fn render_chat_history(state: &State, frame: &mut Frame, area: Rect) {
         })
         .collect();
 
-    let (borders, border_style, border_corners) = match state.focus {
-        Focus::Channels => (
-            Borders::RIGHT | Borders::TOP,
-            Style::default(),
-            border::Set {
-                bottom_right: line::NORMAL.horizontal_up,
-                top_right: line::NORMAL.horizontal_down,
-                ..border::PLAIN
-            },
-        ),
-        Focus::ChatHistory => (
-            Borders::ALL,
-            Style::default().fg(Color::Cyan),
-            border::Set {
-                bottom_left: line::NORMAL.cross,
-                bottom_right: line::NORMAL.vertical_left,
-                top_right: line::NORMAL.horizontal_down,
-                top_left: line::NORMAL.horizontal_down,
-                ..border::PLAIN
-            },
-        ),
-        Focus::Users => (
-            Borders::TOP | Borders::LEFT,
-            Style::default(),
-            border::Set {
-                bottom_left: line::NORMAL.vertical_right,
-                bottom_right: line::NORMAL.vertical_left,
-                top_right: line::NORMAL.horizontal_down,
-                top_left: line::NORMAL.horizontal_down,
-                ..border::PLAIN
-            },
-        ),
-        Focus::ChatInput(_) => (
-            Borders::TOP | Borders::RIGHT | Borders::LEFT,
-            Style::default(),
-            border::Set {
-                bottom_left: line::NORMAL.horizontal_up,
-                bottom_right: line::NORMAL.horizontal_up,
-                top_right: line::NORMAL.horizontal_down,
-                top_left: line::NORMAL.horizontal_down,
-                ..border::PLAIN
-            },
-        ),
-    };
+    let (borders, border_style, border_corners) = borders_chat_history(state);
 
     let widget = Paragraph::new(Text::from(chatlog)).wrap(Wrap { trim: false }).block(
         Block::default()
@@ -296,50 +247,7 @@ fn render_chat_input(state: &State, frame: &mut Frame, area: Rect) {
 
     let input_line = vec![Line::from(Span::from("")), Line::from(input_text)];
 
-    let (borders, border_style, border_corners) = match state.focus {
-        Focus::Channels => (
-            Borders::RIGHT | Borders::TOP | Borders::BOTTOM,
-            Style::default(),
-            border::Set {
-                bottom_right: line::NORMAL.horizontal_up,
-                top_right: line::NORMAL.vertical_left,
-                ..border::PLAIN
-            },
-        ),
-        Focus::ChatHistory => (
-            Borders::LEFT | Borders::RIGHT | Borders::BOTTOM,
-            Style::default(),
-            border::Set {
-                bottom_left: line::NORMAL.horizontal_up,
-                bottom_right: line::NORMAL.horizontal_up,
-                top_right: line::NORMAL.horizontal_down,
-                top_left: line::NORMAL.horizontal_down,
-                ..border::PLAIN
-            },
-        ),
-        Focus::ChatInput(_) => (
-            Borders::ALL,
-            Style::default().fg(Color::Cyan),
-            border::Set {
-                bottom_left: line::NORMAL.horizontal_up,
-                bottom_right: line::NORMAL.horizontal_up,
-                top_right: line::NORMAL.vertical_left,
-                top_left: line::NORMAL.vertical_right,
-                ..border::PLAIN
-            },
-        ),
-        Focus::Users => (
-            Borders::TOP | Borders::BOTTOM | Borders::LEFT,
-            Style::default(),
-            border::Set {
-                bottom_left: line::NORMAL.horizontal_up,
-                bottom_right: line::NORMAL.horizontal_up,
-                top_right: line::NORMAL.vertical_right,
-                top_left: line::NORMAL.vertical_right,
-                ..border::PLAIN
-            },
-        ),
-    };
+    let (borders, border_style, border_corners) = borders_input(state);
     let widget = Paragraph::new(Text::from(input_line)).block(
         Block::default()
             .padding(PADDING)
@@ -381,45 +289,7 @@ fn render_users(state: &State, frame: &mut Frame, area: Rect) {
         ..border::PLAIN
     };
 
-    let (borders, border_style, border_corners) = match state.focus {
-        Focus::ChatHistory => (
-            Borders::RIGHT | Borders::TOP | Borders::BOTTOM,
-            Style::default(),
-            border::Set {
-                bottom_right: line::NORMAL.vertical_left,
-                ..border::PLAIN
-            },
-        ),
-        Focus::ChatInput(_) => (
-            Borders::TOP | Borders::BOTTOM | Borders::RIGHT,
-            Style::default(),
-            border::Set {
-                bottom_left: line::NORMAL.horizontal_up,
-                bottom_right: line::NORMAL.vertical_left,
-                top_left: line::NORMAL.horizontal_down,
-                ..border::PLAIN
-            },
-        ),
-        Focus::Users => (
-            Borders::ALL,
-            Style::default().fg(Color::Cyan),
-            border::Set {
-                bottom_left: line::NORMAL.horizontal_up,
-                bottom_right: line::NORMAL.vertical_left,
-                top_left: line::NORMAL.horizontal_down,
-                ..border::PLAIN
-            },
-        ),
-        _ => (
-            Borders::TOP | Borders::RIGHT | Borders::BOTTOM,
-            Style::default(),
-            border::Set {
-                bottom_left: line::NORMAL.vertical_right,
-                bottom_right: line::NORMAL.vertical_left,
-                ..border::PLAIN
-            },
-        ),
-    };
+    let (borders, border_style, border_corners) = borders_users(state);
 
     let widget = Paragraph::new(Text::from(lines)).block(
         Block::default()
@@ -440,6 +310,7 @@ fn render_info(state: &State, frame: &mut Frame, area: Rect) {
             "[Enter] Send Message | [Backspace] Delete | [←→] Move Cursor | [Ctrl + ←→] Tab move Cursor | [↑] Chatlog | [L]ogs | [Q]uit"
         }
         Focus::Users => "[←] Chat log | [L]ogs | [Q]uit",
+        Focus::Logs => "[L]ogs | [Q]uit",
     };
 
     let border_style = Style::default();
@@ -460,13 +331,15 @@ fn render_logs(state: &State, frame: &mut Frame, area: Rect) {
 
     let logs: Vec<Line> = state.logs.iter().skip(start_index).map(|entry| entry.format()).collect();
 
-    let border_style = Style::default();
+    let (borders, border_style, border_corners) = borders_logs(state);
+
     let widget = Paragraph::new(Text::from(logs)).wrap(Wrap { trim: true }).block(
         Block::default()
-            // .padding(PADDING)
-            .borders(Borders::LEFT | Borders::RIGHT | Borders::BOTTOM)
+            .padding(PADDING)
+            .border_set(border_corners)
+            .borders(borders)
             .border_style(border_style)
-            .title(Span::styled(format!(" Log ({current_log_count})"), HEADER_STYLE)),
+            .title(Span::styled("Logs".to_string(), HEADER_STYLE)),
     );
     frame.render_widget(widget, area);
 }

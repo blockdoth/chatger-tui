@@ -8,9 +8,12 @@ use anyhow::{Ok, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use crossterm::event::{Event, KeyCode, KeyModifiers};
+use log::info;
 use ratatui::Frame;
 use tokio::sync::mpsc::{self, Sender};
 
+use crate::cli::{AppConfig, CliArgs};
+use crate::network::start_client;
 use crate::tui::chat::{Channel, ChannelId, ChannelStatus, ChatMessage, ChatMessageStatus, CurrentUser, User};
 use crate::tui::framework::{FromLog, Tui, TuiRunner};
 use crate::tui::logs::LogEntry;
@@ -30,6 +33,7 @@ pub enum TuiEvent {
     InputChar(char),
     InputDelete,
     InputEnter,
+    ToggleLogs,
 }
 
 impl FromLog for TuiEvent {
@@ -44,6 +48,7 @@ pub enum Focus {
     ChatHistory,
     ChatInput(usize),
     Users,
+    Logs,
 }
 
 #[derive(Debug)]
@@ -62,6 +67,7 @@ pub struct State {
     active_channel_idx: usize,
     focus: Focus,
     current_user: CurrentUser,
+    show_logs: bool,
 }
 
 impl State {
@@ -103,6 +109,7 @@ impl State {
 
         State {
             should_quit: false,
+            show_logs: false,
             logs_scroll_offset: 0,
             logs: vec![],
             active_channel_idx: 0,
@@ -166,13 +173,16 @@ impl Tui<TuiEvent, Command> for State {
                     KeyCode::Down => Some(TuiEvent::ChannelDown),
                     KeyCode::Right => Some(TuiEvent::FocusChange(Focus::ChatHistory)),
                     KeyCode::Char('q') | KeyCode::Char('Q') => Some(TuiEvent::Exit),
+                    KeyCode::Char('l') | KeyCode::Char('L') => Some(TuiEvent::ToggleLogs),
                     _ => None,
                 },
                 Focus::ChatHistory => match key_event.code {
                     KeyCode::Left => Some(TuiEvent::FocusChange(Focus::Channels)),
+                    KeyCode::Right if self.show_logs => Some(TuiEvent::FocusChange(Focus::Logs)),
                     KeyCode::Right => Some(TuiEvent::FocusChange(Focus::Users)),
                     KeyCode::Down | KeyCode::Enter => Some(TuiEvent::FocusChange(Focus::ChatInput(0))),
                     KeyCode::Char('q') | KeyCode::Char('Q') => Some(TuiEvent::Exit),
+                    KeyCode::Char('l') | KeyCode::Char('L') => Some(TuiEvent::ToggleLogs),
                     _ => None,
                 },
                 Focus::ChatInput(_) => match key_event.code {
@@ -188,8 +198,18 @@ impl Tui<TuiEvent, Command> for State {
                     _ => None,
                 },
                 Focus::Users => match key_event.code {
+                    KeyCode::Left if self.show_logs => Some(TuiEvent::FocusChange(Focus::Logs)),
                     KeyCode::Left => Some(TuiEvent::FocusChange(Focus::ChatHistory)),
                     KeyCode::Char('q') | KeyCode::Char('Q') => Some(TuiEvent::Exit),
+                    KeyCode::Char('l') | KeyCode::Char('L') => Some(TuiEvent::ToggleLogs),
+                    _ => None,
+                },
+                Focus::Logs => match key_event.code {
+                    KeyCode::Left => Some(TuiEvent::FocusChange(Focus::ChatHistory)),
+                    KeyCode::Right => Some(TuiEvent::FocusChange(Focus::Users)),
+                    KeyCode::Down | KeyCode::Enter => Some(TuiEvent::FocusChange(Focus::ChatInput(0))),
+                    KeyCode::Char('q') | KeyCode::Char('Q') => Some(TuiEvent::Exit),
+                    KeyCode::Char('l') | KeyCode::Char('L') => Some(TuiEvent::ToggleLogs),
                     _ => None,
                 },
             },
@@ -199,7 +219,11 @@ impl Tui<TuiEvent, Command> for State {
 
     async fn handle_event(&mut self, event: TuiEvent, command_send: &Sender<Command>) -> Result<()> {
         match event {
-            TuiEvent::Exit => __self.should_quit = true,
+            TuiEvent::Exit => self.should_quit = true,
+            TuiEvent::ToggleLogs => {
+                self.show_logs = !self.show_logs;
+                self.focus = Focus::ChatHistory;
+            }
             TuiEvent::Log(entry) => self.logs.push(entry),
             TuiEvent::ChannelUp => {
                 if self.active_channel_idx == 0 {
@@ -310,21 +334,14 @@ impl Tui<TuiEvent, Command> for State {
     }
 }
 
-pub async fn run() -> Result<()> {
+pub async fn run(args: AppConfig) -> Result<()> {
     let (command_send, command_recv) = mpsc::channel::<Command>(10);
     let (even_send, even_recv) = mpsc::channel::<TuiEvent>(10);
 
     let update_send_clone = even_send.clone();
 
     // Showcases messages going both ways
-    let other_task = vec![async move {
-        // loop {
-        //     update_send_clone.send(Update::Foo).await.unwrap();
-        //     if command_recv.try_recv().is_ok() {
-        //         warn!("Foo has been touched");
-        //     }
-        // }
-    }];
+    let other_task = vec![start_client(args.address, args.username, args.password)];
 
     let tui = State::new();
     let tui_runner = TuiRunner::new(tui, command_send, even_recv, even_send, log::LevelFilter::Info);

@@ -22,10 +22,12 @@ pub fn draw(state: &State, frame: &mut Frame) {
     let main_area = frame.area();
     let (app_area, info_area) = split_app_info(state, main_area);
     let (channels_area, chat_area, users_area) = split_channel_chat_user_areas(state, app_area);
+    let (channels_area, profile_area) = split_channels_profile(state, channels_area);
     let (chat_log, chat_input) = split_chatlog_chatinput_areas(state, chat_area);
 
     // render_logs(state, frame, frame_area);
     render_channels(state, frame, channels_area);
+    render_profile(state, frame, profile_area);
     render_chat_history(state, frame, chat_log);
     render_chat_input(state, frame, chat_input);
     render_users(state, frame, users_area);
@@ -52,6 +54,15 @@ fn split_channel_chat_user_areas(state: &State, area: Rect) -> (Rect, Rect, Rect
         .constraints([Constraint::Length(channel_width), Constraint::Fill(10), Constraint::Length(users_width)])
         .split(area);
     (chunks[0], chunks[1], chunks[2])
+}
+
+fn split_channels_profile(state: &State, area: Rect) -> (Rect, Rect) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(0)
+        .constraints([Constraint::Fill(10), Constraint::Length(4)])
+        .split(area);
+    (chunks[0], chunks[1])
 }
 
 fn split_chatlog_chatinput_areas(state: &State, area: Rect) -> (Rect, Rect) {
@@ -89,7 +100,7 @@ fn render_channels(state: &State, frame: &mut Frame, area: Rect) {
             Style::default().fg(Color::Cyan),
             border::Set {
                 bottom_left: line::NORMAL.vertical_right,
-                bottom_right: line::NORMAL.horizontal_up,
+                bottom_right: line::NORMAL.cross,
                 top_right: line::NORMAL.horizontal_down,
                 ..border::PLAIN
             },
@@ -110,6 +121,44 @@ fn render_channels(state: &State, frame: &mut Frame, area: Rect) {
             .borders(borders)
             .border_style(border_style)
             .title(Span::styled("Channels".to_string(), HEADER_STYLE)),
+    );
+    frame.render_widget(widget, area);
+}
+
+fn render_profile(state: &State, frame: &mut Frame, area: Rect) {
+    let (borders, border_style, border_corners) = match state.focus {
+        Focus::Channels => (
+            Borders::LEFT | Borders::RIGHT | Borders::BOTTOM,
+            Style::default(),
+            border::Set {
+                top_right: line::NORMAL.horizontal_down,
+                top_left: line::NORMAL.vertical_right,
+                bottom_left: line::NORMAL.vertical_right,
+                bottom_right: line::NORMAL.horizontal_up,
+                ..border::PLAIN
+            },
+        ),
+        _ => (
+            Borders::LEFT | Borders::BOTTOM,
+            Style::default(),
+            border::Set {
+                top_right: line::NORMAL.horizontal_down,
+                top_left: line::NORMAL.vertical_right,
+                bottom_left: line::NORMAL.vertical_right,
+                bottom_right: line::NORMAL.horizontal_up,
+                ..border::PLAIN
+            },
+        ),
+    };
+    let lines = vec![Line::from(Span::from("")), Line::from(state.current_user.name.clone())];
+
+    let border_style = Style::default();
+    let widget = Paragraph::new(Text::from(lines)).block(
+        Block::default()
+            .padding(PADDING)
+            .border_set(border_corners)
+            .borders(borders)
+            .border_style(border_style),
     );
     frame.render_widget(widget, area);
 }
@@ -179,7 +228,7 @@ fn render_chat_history(state: &State, frame: &mut Frame, area: Rect) {
             Borders::ALL,
             Style::default().fg(Color::Cyan),
             border::Set {
-                bottom_left: line::NORMAL.vertical_right,
+                bottom_left: line::NORMAL.cross,
                 bottom_right: line::NORMAL.vertical_left,
                 top_right: line::NORMAL.horizontal_down,
                 top_left: line::NORMAL.horizontal_down,

@@ -144,7 +144,13 @@ fn render_channels(state: &State, frame: &mut Frame, area: Rect) {
 
 fn render_profile(state: &State, frame: &mut Frame, area: Rect) {
     let (borders, border_style, border_corners) = borders_profile(state);
-    let lines = vec![Line::from(Span::from("")), Line::from(state.current_user.name.clone())];
+    let current_user = if let Some(user) = &state.current_user {
+        user.name.clone()
+    } else {
+        "Not logged in :(".to_owned()
+    };
+
+    let lines = vec![Line::from(Span::from("")), Line::from(current_user)];
 
     let border_style = Style::default();
     let widget = Paragraph::new(Text::from(lines)).block(

@@ -16,6 +16,7 @@ async fn main() -> Result<()> {
         address: args.address.parse()?,
         username: args.username,
         password: args.password,
+        loglevel: args.loglevel,
     };
 
     tui::run(config).await

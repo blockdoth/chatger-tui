@@ -11,6 +11,7 @@ use crossterm::event::{Event, KeyCode, KeyModifiers};
 use log::info;
 use ratatui::Frame;
 use tokio::sync::mpsc::{self, Sender};
+use tokio::sync::watch::error;
 
 use crate::cli::{AppConfig, CliArgs};
 use crate::network::start_client;
@@ -34,6 +35,7 @@ pub enum TuiEvent {
     InputDelete,
     InputEnter,
     ToggleLogs,
+    LoggedIn(String),
 }
 
 impl FromLog for TuiEvent {
@@ -66,7 +68,7 @@ pub struct State {
     chat_input: String,
     active_channel_idx: usize,
     focus: Focus,
-    current_user: CurrentUser,
+    current_user: Option<CurrentUser>,
     show_logs: bool,
 }
 
@@ -109,15 +111,12 @@ impl State {
 
         State {
             should_quit: false,
-            show_logs: false,
+            show_logs: true,
             logs_scroll_offset: 0,
             logs: vec![],
             active_channel_idx: 0,
             focus: Focus::Channels,
-            current_user: CurrentUser {
-                id: 0,
-                name: "blockdoth".to_owned(),
-            },
+            current_user: None,
             channels: vec![
                 Channel {
                     id: 0,
@@ -295,23 +294,25 @@ impl Tui<TuiEvent, Command> for State {
                 }
             }
             TuiEvent::InputEnter if self.chat_input.len() > 1 => {
-                command_send.send(Command::SendMessage(self.chat_input.clone())).await?;
+                if let Some(user) = &self.current_user {
+                    command_send.send(Command::SendMessage(self.chat_input.clone())).await?;
+                    let message = ChatMessage {
+                        id: 0,
+                        author_name: user.name.to_owned(),
+                        author_id: user.id,
+                        timestamp: Utc::now(),
+                        message: self.chat_input.clone(),
+                        status: ChatMessageStatus::Sending,
+                    };
+                    self.chat_history
+                        .entry(self.channels.get(self.active_channel_idx).unwrap().id)
+                        .and_modify(|log| log.push(message));
 
-                let message = ChatMessage {
-                    id: 0,
-                    author_name: self.current_user.name.to_owned(),
-                    author_id: self.current_user.id,
-                    timestamp: Utc::now(),
-                    message: self.chat_input.clone(),
-                    status: ChatMessageStatus::Sending,
-                };
-
-                self.chat_history
-                    .entry(self.channels.get(self.active_channel_idx).unwrap().id)
-                    .and_modify(|log| log.push(message));
-
-                self.focus = Focus::ChatInput(0);
-                self.chat_input = " ".to_owned();
+                    self.focus = Focus::ChatInput(0);
+                    self.chat_input = " ".to_owned();
+                } else {
+                    todo!("tui notification handling for trying to send a message while not logged in")
+                }
             }
             TuiEvent::InputChar(chr) => {
                 if let Focus::ChatInput(i) = self.focus {
@@ -320,6 +321,7 @@ impl Tui<TuiEvent, Command> for State {
                     self.focus = Focus::ChatInput(i + 1)
                 }
             }
+            TuiEvent::LoggedIn(name) => self.current_user = Some(CurrentUser { id: 0, name }),
             _ => {}
         }
         Ok(())
@@ -336,15 +338,15 @@ impl Tui<TuiEvent, Command> for State {
 
 pub async fn run(args: AppConfig) -> Result<()> {
     let (command_send, command_recv) = mpsc::channel::<Command>(10);
-    let (even_send, even_recv) = mpsc::channel::<TuiEvent>(10);
+    let (event_send, event_recv) = mpsc::channel::<TuiEvent>(10);
 
-    let update_send_clone = even_send.clone();
+    let update_send_clone = event_send.clone();
 
     // Showcases messages going both ways
-    let other_task = vec![start_client(args.address, args.username, args.password)];
+    let other_task = vec![start_client(event_send.clone(), args.address, args.username, args.password)];
 
     let tui = State::new();
-    let tui_runner = TuiRunner::new(tui, command_send, even_recv, even_send, log::LevelFilter::Info);
+    let tui_runner = TuiRunner::new(tui, command_send, event_recv, event_send, args.loglevel);
 
     tui_runner.run(other_task).await
 }

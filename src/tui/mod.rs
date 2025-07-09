@@ -7,11 +7,11 @@ use std::collections::HashMap;
 use anyhow::{Ok, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use crossterm::event::{Event, KeyCode};
+use crossterm::event::{Event, KeyCode, KeyModifiers};
 use ratatui::Frame;
 use tokio::sync::mpsc::{self, Sender};
 
-use crate::tui::chat::{Channel, ChannelId, ChannelStatus, ChatMessage, User};
+use crate::tui::chat::{Channel, ChannelId, ChannelStatus, ChatMessage, ChatMessageStatus, CurrentUser, User};
 use crate::tui::framework::{FromLog, Tui, TuiRunner};
 use crate::tui::logs::LogEntry;
 use crate::tui::ui::draw;
@@ -23,6 +23,13 @@ pub enum TuiEvent {
     ChannelUp,
     ChannelDown,
     FocusChange(Focus),
+    InputRight,
+    InputRightTab,
+    InputLeft,
+    InputLeftTab,
+    InputChar(char),
+    InputDelete,
+    InputEnter,
 }
 
 impl FromLog for TuiEvent {
@@ -35,12 +42,14 @@ impl FromLog for TuiEvent {
 pub enum Focus {
     Channels,
     ChatHistory,
-    ChatInput,
+    ChatInput(usize),
     Users,
 }
 
 #[derive(Debug)]
-pub enum Command {}
+pub enum Command {
+    SendMessage(String),
+}
 
 pub struct State {
     should_quit: bool,
@@ -52,6 +61,7 @@ pub struct State {
     chat_input: String,
     active_channel_idx: usize,
     focus: Focus,
+    current_user: CurrentUser,
 }
 
 impl State {
@@ -60,43 +70,35 @@ impl State {
         chatlogs.insert(0, vec![
               ChatMessage {
                 id: 1,
-                author: User {
-                    id: 1,
-                    name: "ballman 1".to_owned(),
-                    status: chat::UserStatus::Online,
-                },
+                author_id: 1,
+                author_name: "ballman 1".to_owned(),
                 timestamp: Utc::now(),
                 message: "balls".to_owned(),
-            },
+                status: ChatMessageStatus::Send,
+              },
               ChatMessage {
                 id: 2,
-                author: User {
-                    id: 2,
-                    name: "ballman 2".to_owned(),
-                    status: chat::UserStatus::Online,
-                },
+                author_id: 2,
+                author_name: "ballman 2".to_owned(),
                 timestamp: Utc::now(),
                 message: "also balls".to_owned(),
-            },
+                status: ChatMessageStatus::Send,
+              },
               ChatMessage {
                 id: 3,
-                author: User {
-                    id: 3,
-                    name: "ballman 3".to_owned(),
-                    status: chat::UserStatus::Online,
-                },
+                author_id: 3,
+                author_name: "ballman 3".to_owned(),
                 timestamp: Utc::now(),
                 message: "more balls".to_owned(),
-            },
+                status: ChatMessageStatus::FailedToSend,
+              },
               ChatMessage {
                 id: 4,
-                author: User {
-                    id: 4,
-                    name: "ballman 4".to_owned(),
-                    status: chat::UserStatus::Online,
-                },
+                author_id: 4,
+                author_name: "ballman 4".to_owned(),
                 timestamp: Utc::now(),
                 message: "What the fuck did you just fucking say about me, you little bitch? I'll have you know I graduated top of my class in the Navy Seals, and I've been involved in numerous secret raids on Al-Quaeda, and I have over 300 confirmed kills. I am trained in gorilla warfare and I'm the top sniper in the entire ".to_owned(),
+                status: ChatMessageStatus::Sending,
             }]);
 
         State {
@@ -105,6 +107,10 @@ impl State {
             logs: vec![],
             active_channel_idx: 0,
             focus: Focus::Channels,
+            current_user: CurrentUser {
+                id: 0,
+                name: "blockdoth".to_owned(),
+            },
             channels: vec![
                 Channel {
                     id: 0,
@@ -140,7 +146,7 @@ impl State {
                 },
             ],
             chat_history: chatlogs,
-            chat_input: "We're no strangers to love".to_owned(),
+            chat_input: " ".to_owned(),
         }
     }
 }
@@ -165,12 +171,20 @@ impl Tui<TuiEvent, Command> for State {
                 Focus::ChatHistory => match key_event.code {
                     KeyCode::Left => Some(TuiEvent::FocusChange(Focus::Channels)),
                     KeyCode::Right => Some(TuiEvent::FocusChange(Focus::Users)),
-                    KeyCode::Enter => Some(TuiEvent::FocusChange(Focus::ChatInput)),
+                    KeyCode::Down | KeyCode::Enter => Some(TuiEvent::FocusChange(Focus::ChatInput(0))),
                     KeyCode::Char('q') | KeyCode::Char('Q') => Some(TuiEvent::Exit),
                     _ => None,
                 },
-                Focus::ChatInput => match key_event.code {
-                    KeyCode::Esc => Some(TuiEvent::FocusChange(Focus::ChatHistory)),
+                Focus::ChatInput(_) => match key_event.code {
+                    KeyCode::Up => Some(TuiEvent::FocusChange(Focus::ChatHistory)),
+                    KeyCode::Left if key_event.modifiers == KeyModifiers::CONTROL => Some(TuiEvent::InputLeftTab),
+                    KeyCode::Right if key_event.modifiers == KeyModifiers::CONTROL => Some(TuiEvent::InputRightTab),
+                    KeyCode::Left => Some(TuiEvent::InputLeft),
+                    KeyCode::Right => Some(TuiEvent::InputRight),
+                    KeyCode::Enter => Some(TuiEvent::InputEnter),
+                    KeyCode::Char(chr) => Some(TuiEvent::InputChar(chr)),
+                    KeyCode::Backspace => Some(TuiEvent::InputDelete),
+
                     _ => None,
                 },
                 Focus::Users => match key_event.code {
@@ -198,6 +212,91 @@ impl Tui<TuiEvent, Command> for State {
                 self.active_channel_idx = (self.active_channel_idx + 1) % self.channels.len();
             }
             TuiEvent::FocusChange(focus) => self.focus = focus,
+            TuiEvent::InputLeft => {
+                if let Focus::ChatInput(i) = self.focus
+                    && i > 0
+                {
+                    self.focus = Focus::ChatInput(i - 1)
+                }
+            }
+            TuiEvent::InputRight => {
+                if let Focus::ChatInput(i) = self.focus
+                    && i + 1 < self.chat_input.len()
+                {
+                    self.focus = Focus::ChatInput(i + 1)
+                }
+            }
+            TuiEvent::InputLeftTab => {
+                if let Focus::ChatInput(i) = self.focus
+                    && i > 0
+                {
+                    let idx = self
+                        .chat_input
+                        .char_indices()
+                        .take(i)
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .rev()
+                        .skip_while(|(_, c)| *c != ' ')
+                        // .skip_while(|(_, c)| *c == ' ')
+                        .map(|(idx, _)| idx)
+                        .next()
+                        .unwrap_or_else(|| 0);
+
+                    self.focus = Focus::ChatInput(idx)
+                }
+            }
+            TuiEvent::InputRightTab => {
+                if let Focus::ChatInput(i) = self.focus
+                    && i + 1 < self.chat_input.len()
+                {
+                    let idx = self
+                        .chat_input
+                        .char_indices()
+                        .skip(i + 1)
+                        .skip_while(|(_, c)| *c != ' ')
+                        // .skip_while(|(_, c)| *c == ' ')
+                        .map(|(idx, _)| idx)
+                        .next()
+                        .unwrap_or_else(|| self.chat_input.len());
+                    self.focus = Focus::ChatInput(idx)
+                }
+            }
+            TuiEvent::InputDelete => {
+                if let Focus::ChatInput(i) = self.focus
+                    && i > 0
+                {
+                    self.chat_input.remove(i - 1);
+                    self.focus = Focus::ChatInput(i - 1)
+                }
+            }
+            TuiEvent::InputEnter if self.chat_input.len() > 1 => {
+                command_send.send(Command::SendMessage(self.chat_input.clone())).await?;
+
+                let message = ChatMessage {
+                    id: 0,
+                    author_name: self.current_user.name.to_owned(),
+                    author_id: self.current_user.id,
+                    timestamp: Utc::now(),
+                    message: self.chat_input.clone(),
+                    status: ChatMessageStatus::Sending,
+                };
+
+                self.chat_history
+                    .entry(self.channels.get(self.active_channel_idx).unwrap().id)
+                    .and_modify(|log| log.push(message));
+
+                self.focus = Focus::ChatInput(0);
+                self.chat_input = " ".to_owned();
+            }
+            TuiEvent::InputChar(chr) => {
+                if let Focus::ChatInput(i) = self.focus {
+                    self.chat_input.insert(i, chr);
+
+                    self.focus = Focus::ChatInput(i + 1)
+                }
+            }
+            _ => {}
         }
         Ok(())
     }

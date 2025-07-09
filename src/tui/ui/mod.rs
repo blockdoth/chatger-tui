@@ -5,7 +5,7 @@ use ratatui::symbols::{border, line};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Padding, Paragraph, Wrap};
 
-use crate::tui::chat::{ChannelStatus, UserStatus};
+use crate::tui::chat::{ChannelStatus, ChatMessageStatus, UserStatus};
 use crate::tui::{Focus, State};
 
 const HEADER_STYLE: Style = Style {
@@ -129,15 +129,37 @@ fn render_chat_history(state: &State, frame: &mut Frame, area: Rect) {
         .flat_map(|chat_message| {
             let timestamp = chat_message.timestamp.format("%H:%M:%S").to_string();
 
+            let header_style = match chat_message.status {
+                ChatMessageStatus::Send => Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                ChatMessageStatus::Sending => Style::default().fg(Color::Yellow).add_modifier(Modifier::DIM | Modifier::ITALIC),
+                ChatMessageStatus::FailedToSend => Style::default().fg(Color::LightRed).add_modifier(Modifier::DIM | Modifier::ITALIC),
+            };
+
+            let body_style = match chat_message.status {
+                ChatMessageStatus::Send => Style::default().fg(Color::Gray),
+                ChatMessageStatus::Sending => Style::default().fg(Color::Gray).add_modifier(Modifier::DIM | Modifier::ITALIC),
+                ChatMessageStatus::FailedToSend => Style::default().fg(Color::LightRed).add_modifier(Modifier::DIM | Modifier::ITALIC),
+            };
+
+            let timestamp_style = match chat_message.status {
+                ChatMessageStatus::Send => Style::default().fg(Color::DarkGray),
+                ChatMessageStatus::Sending | ChatMessageStatus::FailedToSend => Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
+            };
+
             let header = Line::from(vec![
-                Span::styled(
-                    format!("{} ", &chat_message.author.name),
-                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
-                ),
-                Span::styled(format!(" [{timestamp}] "), Style::default().fg(Color::DarkGray)),
+                Span::styled(format!("{} ", &chat_message.author_name), header_style),
+                Span::styled(format!(" [{timestamp}] "), timestamp_style),
+                (match chat_message.status {
+                    ChatMessageStatus::Send => Span::raw(""),
+                    ChatMessageStatus::Sending => Span::styled("sending...", Style::default().add_modifier(Modifier::DIM | Modifier::ITALIC)),
+                    ChatMessageStatus::FailedToSend => Span::styled(
+                        "failed to send",
+                        Style::default().fg(Color::LightRed).add_modifier(Modifier::DIM | Modifier::ITALIC),
+                    ),
+                }),
             ]);
 
-            let body = Line::from(Span::raw(format!("\t{}", &chat_message.message)));
+            let body = Line::from(Span::styled(format!("\t{}", &chat_message.message), body_style));
 
             vec![header, body].into_iter()
         })
@@ -175,7 +197,7 @@ fn render_chat_history(state: &State, frame: &mut Frame, area: Rect) {
                 ..border::PLAIN
             },
         ),
-        Focus::ChatInput => (
+        Focus::ChatInput(_) => (
             Borders::TOP | Borders::RIGHT | Borders::LEFT,
             Style::default(),
             border::Set {
@@ -208,7 +230,22 @@ fn render_chat_input(state: &State, frame: &mut Frame, area: Rect) {
         ..border::PLAIN
     };
 
-    let input = vec![Line::from(Span::from("")), Line::from(Span::from(state.chat_input.clone().to_string()))];
+    let input_text: Vec<Span> = state
+        .chat_input
+        .chars()
+        .enumerate()
+        .map(|(idx, c)| {
+            if let Focus::ChatInput(focussed_idx) = state.focus
+                && focussed_idx == idx
+            {
+                Span::styled(c.to_string(), Modifier::UNDERLINED)
+            } else {
+                Span::from(c.to_string())
+            }
+        })
+        .collect();
+
+    let input_line = vec![Line::from(Span::from("")), Line::from(input_text)];
 
     let (borders, border_style, border_corners) = match state.focus {
         Focus::Channels => (
@@ -231,7 +268,7 @@ fn render_chat_input(state: &State, frame: &mut Frame, area: Rect) {
                 ..border::PLAIN
             },
         ),
-        Focus::ChatInput => (
+        Focus::ChatInput(_) => (
             Borders::ALL,
             Style::default().fg(Color::Cyan),
             border::Set {
@@ -254,7 +291,7 @@ fn render_chat_input(state: &State, frame: &mut Frame, area: Rect) {
             },
         ),
     };
-    let widget = Paragraph::new(Text::from(input)).block(
+    let widget = Paragraph::new(Text::from(input_line)).block(
         Block::default()
             .padding(PADDING)
             .border_set(border_corners)
@@ -304,7 +341,7 @@ fn render_users(state: &State, frame: &mut Frame, area: Rect) {
                 ..border::PLAIN
             },
         ),
-        Focus::ChatInput => (
+        Focus::ChatInput(_) => (
             Borders::TOP | Borders::BOTTOM | Borders::RIGHT,
             Style::default(),
             border::Set {
@@ -348,10 +385,12 @@ fn render_users(state: &State, frame: &mut Frame, area: Rect) {
 
 fn render_info(state: &State, frame: &mut Frame, area: Rect) {
     let info_text = match state.focus {
-        Focus::Channels => "[↑↓] Move | [L]ogs | [Q]uit",
-        Focus::ChatHistory => "[L]ogs | [Q]uit",
-        Focus::ChatInput => "[L]ogs | [Q]uit",
-        Focus::Users => "[L]ogs | [Q]uit",
+        Focus::Channels => "[↑↓] Change Channel | [→] Chat log | [L]ogs | [Q]uit",
+        Focus::ChatHistory => "[↓] Input | [←] Channels | [→] Chat log | [L]ogs | [Q]uit",
+        Focus::ChatInput(_) => {
+            "[Enter] Send Message | [Backspace] Delete | [←→] Move Cursor | [Ctrl + ←→] Tab move Cursor | [↑] Chatlog | [L]ogs | [Q]uit"
+        }
+        Focus::Users => "[←] Chat log | [L]ogs | [Q]uit",
     };
 
     let border_style = Style::default();

@@ -1,0 +1,332 @@
+
+# Packet strucutre
+
+BIG ENDIAN: All values are BIG ENDIAN within their field
+
+Field values can span the whole range of the field unless a specific list of allowed values or range is defined, if a constraint is specified, values outside of it should be interpreted as an error. (eg: healtcheck packet content can only have values 0x0 or 0x1, other values should be treated as a malformed packet)
+
+fields format: [field_name|size_in_bytes]
+range format: [min,max]
+
+
+## packet
+
+[                      packet_header | 10                    ][ packet content ]
+[magic_number|4][version|1][user/server+packet_id|1][length|4][ packet content ]
+
+magic_number: 0x43485447 ("CHTG") ?
+version     : 0x01
+user/server+packet_id: [[is_user|1bit][packet_id|7bit]] (see below)
+length      : length of packet content in bytes
+
+## packet_id
+
+user packet_id:
+ 0. healthcheck
+ 1. login
+ 2. send message
+ 3. send media
+ 4. get channels list
+ 5. get channels
+ 6. get history
+ 7. get users list
+ 8. get users
+ 9. get media
+ 10. typing
+ 11. status
+ 50. user config set (for pfp/username/etc)
+
+server packet_id:
+ 0. healthcheck
+ 1. user login response
+ 2. send message ACK
+ 3. send media ACK
+ 4. channels list
+ 5. channels
+ 6. history
+ 7. users list
+ 8. users
+ 9. media
+ 10. user typing
+ 11. user status
+ 50. user config ACK
+
+
+### user   | 0. healthcheck
+### server | 0. healthcheck
+
+[length|4]: 1
+[packet content|1]: [(0x00 | 0x01)]
+ 0x00: PING (it is meant for the other party to reply with PONG)
+ 0x01: PONG (it is sent after receiving PING)
+
+
+### user   | 1. login
+
+[length|4]: length(username,[3,128]) + 1 + length(password,[1,1024])
+[packet content]: [username]['\0'|1][password]
+ username length in bytes must be in the range [3 to 128] both inclusive
+ password length in bytes must be in the range [1 to 1024] both inclusive
+
+### server | 1. user login response
+
+[length|4]: 1+length(failed_message)
+[packet content]: [status|1][failed_message]
+ status 0x0: LOGIN SUCCESS
+ status 0x1: LOGIN FAILED
+ error_message eg "Wrong user/password", "Server is full"
+ failed message will be empty (length 0) for SUCCESS status
+
+
+### user   | 2. send message
+
+[length|4]: 8+8+1+8*num_media+length(message_text,[0,65535])
+[packet content]: [channel_id|8][reply_id|8][num_media|1][media_id1|8][media_id2|8]...[media_idnum|8][message_text]
+ reply_id == 0 means no reply
+ message length in bytes must be in the range [0 to 65535] both inclusive (to fit in 16bits)
+
+### server | 2. send message ACK
+
+[length|4]: 1+8+length(error_message)
+[packet content]: [status|1][message_id|8][error_message]
+ status 0x0: SEND SUCCESS
+ status 0x1: SEND FAILED
+ error_message eg "Invalid media_id", "Too many media", "Invalid characters in text", "Malformed packet"
+ error message will be empty (length 0) for SUCCESS status
+
+
+### user   | 3. send media
+
+[length|4]: 1+length(filename)+1+length(media_data)
+[packet content]: [filename_length|1][filename][media_type|1][media_data]
+ media_type 0x0: RAW    (any file)
+ media_type 0x1: TEXT   (must be valid utf-8, without NULL character)
+ media_type 0x2: AUDIO  (must be MP3)
+ media_type 0x3: IMAGE  (must be PNG)
+ media_type 0x4: VIDEO  (must be MP4)
+
+### server | 3. send media ACK
+
+[length|4]: 1+8+length(error_message)
+[packet content]: [status|1][media_id|8][error_message]
+ status 0x0: SEND SUCCESS
+ status 0x1: SEND FAILED
+ error_message eg "Media too large", "Invalid filename", "Invalid file format", "Malformed packet"
+ error message will be empty (length 0) for SUCCESS status
+
+
+### user   | 4. get channels list
+
+[length|4]: 0
+[packet content]: EMPTY
+
+### server | 4. channels list
+
+[length|4]: 1+2+8*num_channels+length(error_message)
+[packet content]: [status|1][num_channels|2][channel_id1|8][channel_id2|8]...[channel_idnum|8][error_message]
+ status 0x0: GET SUCCESS
+ status 0x1: GET FAILED
+ error_message eg "Malformed packet"
+ error message will be empty (length 0) for SUCCESS status
+
+
+### user   | 5. get channels
+
+[length|4]: 2+8*num_channels
+[packet content]: [num_channels|2][channel_id1|8][channel_id2|8]...[channel_idnum|8]
+
+### server | 5. channels
+
+[length|4]: 1+2+num_channels*(8+1+length(channel_name)+8)+length(error_message)
+[packet content]: [status|1][num_channels|2][ channels ][error_message]
+    [ channels ]: [channel_id1|8][name_len|1][channel_name][icon_id|8]
+                  [channel_id2|8]...
+ status 0x0: GET SUCCESS
+ status 0x1: GET FAILED
+ error_message eg "Channel ID does not exist", "Malformed packet"
+ error message will be empty (length 0) for SUCCESS status
+
+
+### user   | 6. get history
+
+[length|4]: 17
+[packet content]: [channel_id|8][ anchor | 8 ][num_messages_back|1]
+      [ anchor ]: [ [is_message_id|1bit] [message_id/unix_timestamp|63bit] | 8 ]
+ num_messages_back is a 2s-complimment signed 8bit value (-128 to 127), positive values will request messages backwards in time while negative values forward
+ is_message_id 0x0: interpret anchor as unix_timestamp (with 0 as MSB) to use as history origin
+ is_message_id 0x1: interpret anchor as message_id     (with 0 as MSB) to use as history origin
+
+### server | 6. history
+
+[length|4]: 1+1+num_messages*(8+8+8+8+8+2+length(message_text)+1+8*num_media)+length(error_message)
+[packet content]: [status|1][num_messages|1][ messages ][error_message]
+    [ messages ]: [message_id1|8][sent_timestamp|8][user_id|8][channel_id|8][reply_id|8][message_len|2][message_text][num_media|1][media_id1|8][media_id2|8]...[media_idnum|8]
+                  [message_id2|8]...
+ reply_id == 0 means no reply
+ status 0x0: GET SUCCESS
+ status 0x1: GET FAILED
+ status 0x2: NOTIFICATION (for when another user sends a new messages and server notifies the rest)
+ error_message eg "Malformed packet"
+ error message will be empty (length 0) for SUCCESS and NOTIFICATION status
+ messages will be sorted by increasing value of sent_timestamp
+
+
+### user   | 7 get users list
+
+[length|4]: 0
+[packet content]: EMPTY
+
+### server | 7 users list
+
+[length|4]: 1+2+9*num_users+length(error_message)
+[packet content]: [status|1][num_users|2][user_id1|8][status_id1|1][user_id2|8][status_id2|1]...[user_idnum|8][status_idnum|1][error_message]
+ status 0x0: GET SUCCESS
+ status 0x1: GET FAILED
+ status_id 0x00: Offline
+ status_id 0x01: Online
+ status_id 0x02: Idle
+ status_id 0x03: Do Not Disturb
+ error_message eg "Malformed packet"
+ error message will be empty (length 0) for SUCCESS status
+
+
+### user   | 8. get users
+
+[length|4]: 1+num_users*8
+[packet content]: [num_users|1][user_id1|8][user_id2|8]...[user_idnum|8]
+
+### server | 8. users
+
+[length|4]: 1+1+num_users*(8+1+1+length(username)+8+2+length(bio))+length(error_message)
+[packet content]: [status|1][num_users|1][ users ][error_message]
+       [ users ]: [user_id1|8][status_id|1][username_length|1][username][pfp_id|8][bio_length|2][bio]
+                  [user_id2|8]...
+ status 0x0: GET SUCCESS
+ status 0x1: GET FAILED
+ status_id 0x00: Offline
+ status_id 0x01: Online
+ status_id 0x02: Idle
+ status_id 0x03: Do Not Disturb
+ error_message eg "User ID does not exitst", "Malformed packet"
+ error message will be empty (length 0) for SUCCESS status
+
+
+### user   | 9. get media (one at a time because i'm lazy and should be ok given length(media)>>length(packet header))
+
+[length|4]: 8
+[packet content]: [media_id|8]
+
+### server | 9. media
+
+[length|4]: 1+1+length(filename)+1+4+length(media_data)+length(error_message)
+[packet content]: [status|1][filename_length|1][filename][media_type|1][media_length|4][media_data][error_message]
+ media_type 0x0: RAW    (any file)
+ media_type 0x1: TEXT   (must be valid utf-8, without NULL character)
+ media_type 0x2: AUDIO  (must be MP3)
+ media_type 0x3: IMAGE  (must be PNG)
+ media_type 0x4: VIDEO  (must be MP4)
+ status 0x0: GET SUCCESS
+ status 0x1: GET FAILED
+ error_message eg "Media ID does not exitst", "Malformed packet"
+ error message will be empty (length 0) for SUCCESS status
+
+
+### user   | 10. typing
+
+[length|4]: 9
+[packet content]: [is_typing|1][channel_id|8]
+ is_typing 0x00: NOT TYPING
+ is_typing 0x01: TYPING
+
+### server | 10. user typing
+
+[length|4]: 17
+[packet content]: [is_typing|1][user_id|8][channel_id|8]
+ is_typing 0x00: NOT TYPING
+ is_typing 0x01: TYPING
+
+
+### user   | 11. status
+
+[length|4]: 1
+[packet content]: [status_id|1]
+ status_id 0x00: Offline
+ status_id 0x01: Online
+ status_id 0x02: Idle
+ status_id 0x03: Do not disturb
+
+### server | 11. user status
+
+[length|4]: 9
+[packet content]: [status_id|1][user_id|8]
+ status_id 0x00: Offline
+ status_id 0x01: Online
+ status_id 0x02: Idle
+ status_id 0x03: Do not disturb
+
+
+
+### user   | 50. user config set
+TODO
+
+
+### server | 50. user config ACK
+TODO
+
+
+
+
+## BASIC FLOW
+
+   v----------------------
+client: (LOGIN)          |
+server: (LOGIN RESPONSE) |
+   if not ok -------------
+
+client: (GET CHANNELS LIST)
+server: (CHANNELS LIST)
+   (client uses the IDs to compare against local copy to check if new channels,
+    or filter some out if client supports that or simply load all from scratch)
+
+client: (GET CHANNELS)
+server: (CHANNELS)
+   (client uses channels information to update channel names, icon, etc)
+   (actually if you want to load icon, client still needs to ask for the media)
+
+   (client selects media to request for channel icons)
+client: (GET MEDIA)
+server: (MEDIA)
+   (client gets the channel icons)
+
+   (client selects active channel to start loading)
+client: (GET HISTORY)
+server: (HISTORY)
+   (client gets messages back but any user and media is still ids, if not locally stored, it can ask)
+client: (GET USERS)
+server: (USERS)
+   (user data could now be displayed, still just media pending)
+   loop over all media to fetch
+client: (GET MEDIA)
+server: (MEDIA)
+   (media data can be shown) TODO: this presents the slight problem that you have to get the whole file before being able to display the filename and how large it is
+
+
+   (client sends "start typing")
+client: (TYPING)
+server: (USER TYPING) to all other users
+
+   (client sends a message)
+client: (SEND MESSAGE)
+server: (SEND MESSAGE ACK)
+   if ok
+server: (HISTORY) with new message to all other users
+
+   (client sends "stop typing")
+client: (TYPING)
+server: (USER TYPING) to all other users
+
+
+
+
+
+

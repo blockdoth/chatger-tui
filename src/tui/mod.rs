@@ -2,13 +2,16 @@ pub mod chat;
 pub mod framework;
 pub mod logs;
 pub mod ui;
+use std::collections::HashMap;
+
 use anyhow::{Ok, Result};
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use crossterm::event::{Event, KeyCode};
 use ratatui::Frame;
 use tokio::sync::mpsc::{self, Sender};
 
-use crate::tui::chat::{Channel, Chat, User};
+use crate::tui::chat::{Channel, ChannelId, ChannelStatus, ChatMessage, User};
 use crate::tui::framework::{FromLog, Tui, TuiRunner};
 use crate::tui::logs::LogEntry;
 use crate::tui::ui::draw;
@@ -26,6 +29,15 @@ impl FromLog for TuiEvent {
 }
 
 #[derive(Debug)]
+pub enum Focus {
+    Channels,
+    ChatHistory,
+    Input,
+    Users,
+    None,
+}
+
+#[derive(Debug)]
 pub enum Command {}
 
 pub struct State {
@@ -34,20 +46,99 @@ pub struct State {
     logs_scroll_offset: usize,
     channels: Vec<Channel>,
     users: Vec<User>,
-    chat_log: Vec<Chat>,
+    chat_history: HashMap<ChannelId, Vec<ChatMessage>>,
     chat_input: String,
+    active_channel: ChannelId,
+    focus: Focus,
 }
 
 impl State {
     pub fn new() -> Self {
+        let mut chatlogs = HashMap::new();
+        chatlogs.insert(0, vec![
+              ChatMessage {
+                id: 1,
+                author: User {
+                    id: 1,
+                    name: "ballman 1".to_owned(),
+                    status: chat::UserStatus::Online,
+                },
+                timestamp: Utc::now(),
+                message: "balls".to_owned(),
+            },
+              ChatMessage {
+                id: 2,
+                author: User {
+                    id: 2,
+                    name: "ballman 2".to_owned(),
+                    status: chat::UserStatus::Online,
+                },
+                timestamp: Utc::now(),
+                message: "also balls".to_owned(),
+            },
+              ChatMessage {
+                id: 3,
+                author: User {
+                    id: 3,
+                    name: "ballman 3".to_owned(),
+                    status: chat::UserStatus::Online,
+                },
+                timestamp: Utc::now(),
+                message: "more balls".to_owned(),
+            },
+              ChatMessage {
+                id: 4,
+                author: User {
+                    id: 4,
+                    name: "ballman 4".to_owned(),
+                    status: chat::UserStatus::Online,
+                },
+                timestamp: Utc::now(),
+                message: "What the fuck did you just fucking say about me, you little bitch? I'll have you know I graduated top of my class in the Navy Seals, and I've been involved in numerous secret raids on Al-Quaeda, and I have over 300 confirmed kills. I am trained in gorilla warfare and I'm the top sniper in the entire ".to_owned(),
+            }]);
+
         State {
             should_quit: false,
             logs_scroll_offset: 0,
             logs: vec![],
-            channels: vec![],
-            users: vec![],
-            chat_log: vec![],
-            chat_input: "".to_owned(),
+            active_channel: 0,
+            focus: Focus::None,
+            channels: vec![
+                Channel {
+                    id: 0,
+                    name: "Balls".to_owned(),
+                    status: ChannelStatus::Read,
+                },
+                Channel {
+                    id: 1,
+                    name: "penger pics".to_owned(),
+                    status: ChannelStatus::Unread,
+                },
+                Channel {
+                    id: 2,
+                    name: "capi".to_owned(),
+                    status: ChannelStatus::Muted,
+                },
+            ],
+            users: vec![
+                User {
+                    id: 1,
+                    name: "ballman 1".to_owned(),
+                    status: chat::UserStatus::Online,
+                },
+                User {
+                    id: 2,
+                    name: "ballman 2".to_owned(),
+                    status: chat::UserStatus::Offline,
+                },
+                User {
+                    id: 3,
+                    name: "ballman 3".to_owned(),
+                    status: chat::UserStatus::Online,
+                },
+            ],
+            chat_history: chatlogs,
+            chat_input: "We're no strangers to love".to_owned(),
         }
     }
 }

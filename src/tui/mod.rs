@@ -20,6 +20,9 @@ use crate::tui::ui::draw;
 pub enum TuiEvent {
     Log(LogEntry),
     Exit,
+    ChannelUp,
+    ChannelDown,
+    FocusChange(Focus),
 }
 
 impl FromLog for TuiEvent {
@@ -28,13 +31,12 @@ impl FromLog for TuiEvent {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Focus {
     Channels,
     ChatHistory,
-    Input,
+    ChatInput,
     Users,
-    None,
 }
 
 #[derive(Debug)]
@@ -48,7 +50,7 @@ pub struct State {
     users: Vec<User>,
     chat_history: HashMap<ChannelId, Vec<ChatMessage>>,
     chat_input: String,
-    active_channel: ChannelId,
+    active_channel_idx: usize,
     focus: Focus,
 }
 
@@ -101,8 +103,8 @@ impl State {
             should_quit: false,
             logs_scroll_offset: 0,
             logs: vec![],
-            active_channel: 0,
-            focus: Focus::None,
+            active_channel_idx: 0,
+            focus: Focus::Channels,
             channels: vec![
                 Channel {
                     id: 0,
@@ -152,9 +154,30 @@ impl Tui<TuiEvent, Command> for State {
 
     fn process_event(&self, event: Event) -> Option<TuiEvent> {
         match event {
-            Event::Key(key_event) => match key_event.code {
-                KeyCode::Char('q') | KeyCode::Char('Q') => Some(TuiEvent::Exit),
-                _ => None,
+            Event::Key(key_event) => match self.focus {
+                Focus::Channels => match key_event.code {
+                    KeyCode::Up => Some(TuiEvent::ChannelUp),
+                    KeyCode::Down => Some(TuiEvent::ChannelDown),
+                    KeyCode::Right => Some(TuiEvent::FocusChange(Focus::ChatHistory)),
+                    KeyCode::Char('q') | KeyCode::Char('Q') => Some(TuiEvent::Exit),
+                    _ => None,
+                },
+                Focus::ChatHistory => match key_event.code {
+                    KeyCode::Left => Some(TuiEvent::FocusChange(Focus::Channels)),
+                    KeyCode::Right => Some(TuiEvent::FocusChange(Focus::Users)),
+                    KeyCode::Enter => Some(TuiEvent::FocusChange(Focus::ChatInput)),
+                    KeyCode::Char('q') | KeyCode::Char('Q') => Some(TuiEvent::Exit),
+                    _ => None,
+                },
+                Focus::ChatInput => match key_event.code {
+                    KeyCode::Esc => Some(TuiEvent::FocusChange(Focus::ChatHistory)),
+                    _ => None,
+                },
+                Focus::Users => match key_event.code {
+                    KeyCode::Left => Some(TuiEvent::FocusChange(Focus::ChatHistory)),
+                    KeyCode::Char('q') | KeyCode::Char('Q') => Some(TuiEvent::Exit),
+                    _ => None,
+                },
             },
             _ => None,
         }
@@ -162,8 +185,19 @@ impl Tui<TuiEvent, Command> for State {
 
     async fn handle_event(&mut self, event: TuiEvent, command_send: &Sender<Command>) -> Result<()> {
         match event {
-            TuiEvent::Exit => self.should_quit = true,
+            TuiEvent::Exit => __self.should_quit = true,
             TuiEvent::Log(entry) => self.logs.push(entry),
+            TuiEvent::ChannelUp => {
+                if self.active_channel_idx == 0 {
+                    self.active_channel_idx = self.channels.len().saturating_sub(1);
+                } else {
+                    self.active_channel_idx -= 1;
+                }
+            }
+            TuiEvent::ChannelDown => {
+                self.active_channel_idx = (self.active_channel_idx + 1) % self.channels.len();
+            }
+            TuiEvent::FocusChange(focus) => self.focus = focus,
         }
         Ok(())
     }

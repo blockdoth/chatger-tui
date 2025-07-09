@@ -63,7 +63,7 @@ pub fn borders_chat_history(state: &State) -> (Borders, Style, border::Set) {
                 bottom_right: if state.show_logs {
                     line::NORMAL.horizontal_up
                 } else {
-                    line::NORMAL.vertical_left
+                    line::NORMAL.cross
                 },
                 top_right: line::NORMAL.horizontal_down,
                 ..border::PLAIN
@@ -77,7 +77,7 @@ pub fn borders_chat_history(state: &State) -> (Borders, Style, border::Set) {
                 bottom_right: if state.show_logs {
                     line::NORMAL.horizontal_up
                 } else {
-                    line::NORMAL.vertical_left
+                    line::NORMAL.cross
                 },
                 top_right: line::NORMAL.horizontal_down,
                 top_left: line::NORMAL.horizontal_down,
@@ -88,7 +88,7 @@ pub fn borders_chat_history(state: &State) -> (Borders, Style, border::Set) {
             Borders::TOP | Borders::LEFT | Borders::BOTTOM,
             Style::default(),
             border::Set {
-                bottom_left: line::NORMAL.vertical_right,
+                bottom_left: line::NORMAL.cross,
                 bottom_right: line::NORMAL.vertical_left,
                 top_right: line::NORMAL.horizontal_down,
                 top_left: line::NORMAL.horizontal_down,
@@ -99,7 +99,7 @@ pub fn borders_chat_history(state: &State) -> (Borders, Style, border::Set) {
             Borders::TOP | Borders::RIGHT | Borders::LEFT,
             Style::default(),
             border::Set {
-                bottom_left: line::NORMAL.horizontal_up,
+                bottom_left: line::NORMAL.cross,
                 bottom_right: line::NORMAL.horizontal_up,
                 top_right: line::NORMAL.horizontal_down,
                 top_left: line::NORMAL.horizontal_down,
@@ -110,7 +110,7 @@ pub fn borders_chat_history(state: &State) -> (Borders, Style, border::Set) {
             Borders::TOP | Borders::LEFT | Borders::BOTTOM,
             Style::default(),
             border::Set {
-                bottom_left: line::NORMAL.horizontal_up,
+                bottom_left: line::NORMAL.cross,
                 bottom_right: line::NORMAL.horizontal_up,
                 top_right: line::NORMAL.horizontal_down,
                 top_left: line::NORMAL.horizontal_down,
@@ -148,7 +148,7 @@ pub fn borders_input(state: &State) -> (Borders, Style, border::Set) {
             border::Set {
                 bottom_left: line::NORMAL.horizontal_up,
                 bottom_right: line::NORMAL.horizontal_up,
-                top_right: line::NORMAL.vertical_left,
+                top_right: line::NORMAL.cross,
                 top_left: line::NORMAL.cross,
                 ..border::PLAIN
             },
@@ -158,8 +158,6 @@ pub fn borders_input(state: &State) -> (Borders, Style, border::Set) {
             Style::default(),
             border::Set {
                 bottom_left: line::NORMAL.horizontal_up,
-                bottom_right: line::NORMAL.horizontal_up,
-                top_right: line::NORMAL.vertical_right,
                 top_left: line::NORMAL.vertical_right,
                 ..border::PLAIN
             },
@@ -199,7 +197,7 @@ pub fn borders_users(state: &State) -> (Borders, Style, border::Set) {
             Borders::ALL,
             Style::default().fg(Color::Cyan),
             border::Set {
-                bottom_left: line::NORMAL.horizontal_up,
+                bottom_left: line::NORMAL.cross,
                 bottom_right: line::NORMAL.vertical_left,
                 top_left: line::NORMAL.horizontal_down,
                 ..border::PLAIN
@@ -223,7 +221,7 @@ pub fn borders_logs(state: &State) -> (Borders, Style, border::Set) {
             Borders::RIGHT | Borders::TOP | Borders::BOTTOM,
             Style::default(),
             border::Set {
-                bottom_right: line::NORMAL.vertical_left,
+                bottom_right: line::NORMAL.cross,
                 top_right: line::NORMAL.horizontal_down,
                 ..border::PLAIN
             },
@@ -233,7 +231,7 @@ pub fn borders_logs(state: &State) -> (Borders, Style, border::Set) {
             Style::default(),
             border::Set {
                 bottom_left: line::NORMAL.cross,
-                bottom_right: line::NORMAL.vertical_left,
+                bottom_right: line::NORMAL.cross,
                 top_right: line::NORMAL.horizontal_down,
                 top_left: line::NORMAL.horizontal_down,
                 ..border::PLAIN
@@ -244,7 +242,7 @@ pub fn borders_logs(state: &State) -> (Borders, Style, border::Set) {
             Style::default(),
             border::Set {
                 bottom_left: line::NORMAL.horizontal_up,
-                bottom_right: line::NORMAL.vertical_left,
+                bottom_right: line::NORMAL.cross,
                 top_right: line::NORMAL.horizontal_down,
                 top_left: line::NORMAL.horizontal_down,
                 ..border::PLAIN
@@ -255,7 +253,7 @@ pub fn borders_logs(state: &State) -> (Borders, Style, border::Set) {
             Style::default(),
             border::Set {
                 bottom_left: line::NORMAL.horizontal_up,
-                bottom_right: line::NORMAL.horizontal_up,
+                bottom_right: line::NORMAL.cross,
                 top_right: line::NORMAL.horizontal_down,
                 top_left: line::NORMAL.horizontal_down,
                 ..border::PLAIN
@@ -266,9 +264,36 @@ pub fn borders_logs(state: &State) -> (Borders, Style, border::Set) {
             Style::default().fg(Color::Cyan),
             border::Set {
                 bottom_left: line::NORMAL.horizontal_up,
-                bottom_right: line::NORMAL.vertical_left,
+                bottom_right: line::NORMAL.cross,
                 top_right: line::NORMAL.horizontal_down,
                 top_left: line::NORMAL.horizontal_down,
+                ..border::PLAIN
+            },
+        ),
+    }
+}
+
+pub fn borders_server_status(state: &State) -> (Borders, Style, border::Set) {
+    match state.focus {
+        Focus::Users => (
+            Borders::LEFT | Borders::RIGHT | Borders::BOTTOM,
+            Style::default(),
+            border::Set {
+                top_right: line::NORMAL.vertical_left,
+                top_left: line::NORMAL.cross,
+                bottom_left: line::NORMAL.horizontal_up,
+                bottom_right: line::NORMAL.vertical_left,
+                ..border::PLAIN
+            },
+        ),
+        _ => (
+            Borders::RIGHT | Borders::BOTTOM,
+            Style::default(),
+            border::Set {
+                top_right: line::NORMAL.vertical_left,
+                top_left: line::NORMAL.cross,
+                bottom_left: line::NORMAL.horizontal_up,
+                bottom_right: line::NORMAL.vertical_left,
                 ..border::PLAIN
             },
         ),

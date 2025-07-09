@@ -8,7 +8,9 @@ use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Padding, Paragraph, Wrap};
 
 use crate::tui::chat::{ChannelStatus, ChatMessageStatus, UserStatus};
-use crate::tui::ui::borders::{borders_channel, borders_chat_history, borders_input, borders_logs, borders_profile, borders_users};
+use crate::tui::ui::borders::{
+    borders_channel, borders_chat_history, borders_input, borders_logs, borders_profile, borders_server_status, borders_users,
+};
 use crate::tui::{Focus, State};
 
 const HEADER_STYLE: Style = Style {
@@ -25,6 +27,7 @@ pub fn draw(state: &State, frame: &mut Frame) {
     let main_area = frame.area();
     let (app_area, info_area) = split_app_info_areas(state, main_area);
     let (channels_area, chat_area, users_area) = split_channel_chat_user_areas(state, app_area);
+    let (users_area, server_status_area) = split_users_server_areas(state, users_area);
     let (channels_area, profile_area) = split_channels_profile_areas(state, channels_area);
     let (chat_log_area, chat_input_area) = split_chatlog_chatinput_areas(state, chat_area);
 
@@ -41,6 +44,7 @@ pub fn draw(state: &State, frame: &mut Frame) {
     render_chat_history(state, frame, chat_log_area);
     render_chat_input(state, frame, chat_input_area);
     render_users(state, frame, users_area);
+    render_server_status(state, frame, server_status_area);
     render_info(state, frame, info_area);
 }
 
@@ -54,19 +58,31 @@ fn split_app_info_areas(state: &State, area: Rect) -> (Rect, Rect) {
 }
 
 fn split_channel_chat_user_areas(state: &State, area: Rect) -> (Rect, Rect, Rect) {
-    let channel_width = if state.focus == Focus::Channels { 20 } else { 19 };
-
-    let users_width = if state.focus == Focus::Users { 21 } else { 20 };
+    let channel_width_offset = if state.focus == Focus::Channels { 0 } else { 1 };
+    let users_width_offset = if state.focus == Focus::Users { 1 } else { 0 };
 
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .margin(0)
-        .constraints([Constraint::Length(channel_width), Constraint::Fill(10), Constraint::Length(users_width)])
+        .constraints([
+            Constraint::Length(30 - channel_width_offset),
+            Constraint::Fill(10),
+            Constraint::Length(30 + users_width_offset),
+        ])
         .split(area);
     (chunks[0], chunks[1], chunks[2])
 }
 
 fn split_channels_profile_areas(state: &State, area: Rect) -> (Rect, Rect) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(0)
+        .constraints([Constraint::Fill(10), Constraint::Length(4)])
+        .split(area);
+    (chunks[0], chunks[1])
+}
+
+fn split_users_server_areas(state: &State, area: Rect) -> (Rect, Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(0)
@@ -145,12 +161,33 @@ fn render_channels(state: &State, frame: &mut Frame, area: Rect) {
 fn render_profile(state: &State, frame: &mut Frame, area: Rect) {
     let (borders, border_style, border_corners) = borders_profile(state);
     let current_user = if let Some(user) = &state.current_user {
-        user.name.clone()
+        format!("user: {}", user.name.clone())
     } else {
         "Not logged in :(".to_owned()
     };
 
     let lines = vec![Line::from(Span::from("")), Line::from(current_user)];
+
+    let border_style = Style::default();
+    let widget = Paragraph::new(Text::from(lines)).block(
+        Block::default()
+            .padding(PADDING)
+            .border_set(border_corners)
+            .borders(borders)
+            .border_style(border_style),
+    );
+    frame.render_widget(widget, area);
+}
+
+fn render_server_status(state: &State, frame: &mut Frame, area: Rect) {
+    let (borders, border_style, border_corners) = borders_server_status(state);
+    let connection_status = if state.connected_with_server {
+        Span::styled("Server: [Connected]".to_owned(), Style::default().fg(Color::Green))
+    } else {
+        Span::styled("Server: [Disconnected]".to_owned(), Style::default().fg(Color::LightRed))
+    };
+
+    let lines = vec![Line::from(Span::from("")), Line::from(connection_status)];
 
     let border_style = Style::default();
     let widget = Paragraph::new(Text::from(lines)).block(

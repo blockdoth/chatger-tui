@@ -1,5 +1,4 @@
 use anyhow::{Result, anyhow};
-use log::info;
 
 use crate::network::client::MAX_MESSAGE_LENGTH;
 

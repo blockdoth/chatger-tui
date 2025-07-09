@@ -1,11 +1,15 @@
 use std::net::SocketAddr;
+use std::sync::Arc;
+use std::thread::JoinHandle;
 
 use anyhow::{Ok, Result, anyhow};
 use clap::Error;
+use futures::lock;
 use log::{debug, error, info};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
+use tokio::sync::Mutex;
 
 use crate::network::protocol::{
     Deserialize, Header, HealthCheckPacket, HealthKind, LoginPacket, Packet, PacketType, PacketVersion, Payload, Serialize,
@@ -15,21 +19,19 @@ pub const MAX_MESSAGE_LENGTH: usize = 1024; // TODO figure out actual max size
 
 pub struct Client {
     is_connected: bool,
-    read_stream: Option<OwnedReadHalf>,
-    write_stream: Option<OwnedWriteHalf>,
+    stream: Option<TcpStream>,
     header_buffer: [u8; 10],
     payload_buffer: [u8; MAX_MESSAGE_LENGTH],
 }
 
 impl Client {
-    pub fn new() -> Self {
-        Client {
+    pub fn new() -> Arc<Mutex<Self>> {
+        Arc::new(Mutex::new(Client {
             is_connected: false,
-            read_stream: None,
-            write_stream: None,
+            stream: None,
             header_buffer: [0; 10],
             payload_buffer: [0; MAX_MESSAGE_LENGTH],
-        }
+        }))
     }
 
     pub async fn connect(&mut self, target_addr: SocketAddr) -> Result<()> {
@@ -37,12 +39,10 @@ impl Client {
             return Err(anyhow!("Already connected to {}", target_addr));
         }
 
-        let connection = TcpStream::connect(target_addr).await?;
-        let (read_stream, mut write_stream) = connection.into_split();
-        let src_addr = write_stream.local_addr().unwrap();
+        let stream = TcpStream::connect(target_addr).await?;
+        let src_addr = stream.local_addr().unwrap();
 
-        self.read_stream = Some(read_stream);
-        self.write_stream = Some(write_stream);
+        self.stream = Some(stream);
 
         info!("Connected to {target_addr} from {src_addr}");
 
@@ -52,9 +52,8 @@ impl Client {
     pub async fn login(&mut self, username: String, password: String) -> Result<()> {
         self.send_message(PacketType::Login, Payload::Login(LoginPacket { username, password }))
             .await?;
-
         let response = self.read_message().await?;
-        info!("{response:?}");
+        debug!("{response:?}");
         Ok(())
     }
 
@@ -62,15 +61,14 @@ impl Client {
         self.send_message(PacketType::Ping, Payload::HealthCheck(HealthCheckPacket { kind: HealthKind::Ping }))
             .await?;
         let response = self.read_message().await?;
-        info!("{response:?}");
+        debug!("{response:?}");
         Ok(())
     }
+}
 
+impl Client {
     pub async fn send_message(&mut self, packet_type: PacketType, payload: Payload) -> Result<()> {
-        let mut stream = self
-            .write_stream
-            .as_mut()
-            .ok_or_else(|| anyhow!("Cannot send message if not connected"))?;
+        let mut stream = self.stream.as_mut().ok_or_else(|| anyhow!("Cannot send message if not connected"))?;
 
         debug!("Sending packet type: {packet_type:?}");
 
@@ -91,7 +89,8 @@ impl Client {
     }
 
     pub async fn read_message(&mut self) -> Result<Payload> {
-        let mut stream = self.read_stream.as_mut().ok_or_else(|| anyhow!("Cannot read message if not connected"))?;
+        let mut stream = self.stream.as_mut().ok_or_else(|| anyhow!("Cannot read message if not connected"))?;
+
         let mut header_buffer = &mut self.header_buffer;
         let mut payload_buffer = &mut self.payload_buffer;
 

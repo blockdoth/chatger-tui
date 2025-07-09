@@ -36,6 +36,7 @@ pub enum TuiEvent {
     InputEnter,
     ToggleLogs,
     LoggedIn(String),
+    HealthCheck(bool), // True = is connected
 }
 
 impl FromLog for TuiEvent {
@@ -69,6 +70,7 @@ pub struct State {
     active_channel_idx: usize,
     focus: Focus,
     current_user: Option<CurrentUser>,
+    connected_with_server: bool,
     show_logs: bool,
 }
 
@@ -111,6 +113,7 @@ impl State {
 
         State {
             should_quit: false,
+            connected_with_server: false,
             show_logs: true,
             logs_scroll_offset: 0,
             logs: vec![],
@@ -322,6 +325,7 @@ impl Tui<TuiEvent, Command> for State {
                 }
             }
             TuiEvent::LoggedIn(name) => self.current_user = Some(CurrentUser { id: 0, name }),
+            TuiEvent::HealthCheck(is_connected) => self.connected_with_server = is_connected,
             _ => {}
         }
         Ok(())

@@ -13,10 +13,10 @@ pub trait Deserialize: Sized {
 #[derive(Debug, Clone, PartialEq)]
 pub enum PacketType {
     // Client
-    Ping = 0x80,
+    ClientHealthcheck = 0x80,
     Login = 0x81,
     // Server
-    Pong = 0x00,
+    ServerHealthcheck = 0x00,
     LoginAck = 0x01,
 }
 
@@ -28,7 +28,7 @@ impl Serialize for PacketType {
 impl Deserialize for PacketType {
     fn deserialize(bytes: &[u8]) -> Result<Self> {
         match bytes[0] {
-            0x00 => Ok(PacketType::Pong),
+            0x00 => Ok(PacketType::ServerHealthcheck),
             0x01 => Ok(PacketType::LoginAck),
             other => Err(anyhow!("Unknown PacketType value: {:#04x}", other)),
         }
@@ -173,9 +173,10 @@ impl Payload {
 
                 Ok(Payload::LoginAck(LoginAckPacket { status, error_message }))
             }
-            PacketType::Pong => {
+            PacketType::ServerHealthcheck => {
                 let kind = match bytes[0] {
-                    0x00 => HealthKind::Pong,
+                    0x00 => HealthKind::Ping,
+                    0x01 => HealthKind::Pong,
                     k => return Err(anyhow!("Unknown health check kind {k}")),
                 };
                 Ok(Payload::HealthCheck(HealthCheckPacket { kind }))
@@ -192,7 +193,7 @@ pub struct LoginAckPacket {
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum HealthKind {
     Ping = 0x00,
     Pong = 0x01,

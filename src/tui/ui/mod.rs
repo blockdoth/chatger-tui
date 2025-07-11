@@ -1,5 +1,8 @@
 mod borders;
 
+use std::default;
+
+use chrono::{Duration, Utc};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -161,9 +164,14 @@ fn render_channels(state: &State, frame: &mut Frame, area: Rect) {
 fn render_profile(state: &State, frame: &mut Frame, area: Rect) {
     let (borders, border_style, border_corners) = borders_profile(state);
     let current_user = if let Some(user) = &state.current_user {
-        format!("user: {}", user.name.clone())
+        let username = format!("user: {}", user.name.clone());
+        if user.is_logged_in {
+            Span::styled(username, Style::default().fg(Color::Green))
+        } else {
+            Span::styled(username, Style::default().fg(Color::LightRed))
+        }
     } else {
-        "Not logged in :(".to_owned()
+        Span::from("Guest".to_owned())
     };
 
     let lines = vec![Line::from(Span::from("")), Line::from(current_user)];
@@ -181,7 +189,7 @@ fn render_profile(state: &State, frame: &mut Frame, area: Rect) {
 
 fn render_server_status(state: &State, frame: &mut Frame, area: Rect) {
     let (borders, border_style, border_corners) = borders_server_status(state);
-    let connection_status = if state.connected_with_server {
+    let connection_status = if Utc::now() - state.last_healthcheck < Duration::seconds(10) {
         Span::styled("Server: [Connected]".to_owned(), Style::default().fg(Color::Green))
     } else {
         Span::styled("Server: [Disconnected]".to_owned(), Style::default().fg(Color::LightRed))

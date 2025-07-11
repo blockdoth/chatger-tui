@@ -1,4 +1,5 @@
 pub mod chat;
+pub mod events;
 pub mod framework;
 pub mod logs;
 pub mod ui;
@@ -6,7 +7,7 @@ use std::collections::HashMap;
 
 use anyhow::{Ok, Result};
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Days, Duration, Utc};
 use crossterm::event::{Event, KeyCode, KeyModifiers};
 use log::info;
 use ratatui::Frame;
@@ -16,33 +17,15 @@ use tokio::sync::watch::error;
 use crate::cli::{AppConfig, CliArgs};
 use crate::network::start_client;
 use crate::tui::chat::{Channel, ChannelId, ChannelStatus, ChatMessage, ChatMessageStatus, CurrentUser, User};
+use crate::tui::events::TuiEvent;
 use crate::tui::framework::{FromLog, Tui, TuiRunner};
 use crate::tui::logs::LogEntry;
 use crate::tui::ui::draw;
 
-#[derive(Debug)]
-pub enum TuiEvent {
-    Log(LogEntry),
-    Exit,
-    ChannelUp,
-    ChannelDown,
-    FocusChange(Focus),
-    InputRight,
-    InputRightTab,
-    InputLeft,
-    InputLeftTab,
-    InputChar(char),
-    InputDelete,
-    InputEnter,
-    ToggleLogs,
-    LoggedIn(String),
-    HealthCheck(bool), // True = is connected
-}
-
-impl FromLog for TuiEvent {
-    fn from_log(log: logs::LogEntry) -> Self {
-        TuiEvent::Log(log)
-    }
+pub struct UserProfile {
+    id: u64,
+    name: String,
+    is_logged_in: bool,
 }
 
 #[derive(Debug, PartialEq)]
@@ -69,8 +52,8 @@ pub struct State {
     chat_input: String,
     active_channel_idx: usize,
     focus: Focus,
-    current_user: Option<CurrentUser>,
-    connected_with_server: bool,
+    current_user: Option<UserProfile>,
+    last_healthcheck: DateTime<Utc>,
     show_logs: bool,
 }
 
@@ -113,7 +96,7 @@ impl State {
 
         State {
             should_quit: false,
-            connected_with_server: false,
+            last_healthcheck: Utc::now().checked_sub_days(Days::new(1)).unwrap(),
             show_logs: true,
             logs_scroll_offset: 0,
             logs: vec![],
@@ -317,6 +300,7 @@ impl Tui<TuiEvent, Command> for State {
                     todo!("tui notification handling for trying to send a message while not logged in")
                 }
             }
+            TuiEvent::InputEnter => {} // Do nothing if above case falls through
             TuiEvent::InputChar(chr) => {
                 if let Focus::ChatInput(i) = self.focus {
                     self.chat_input.insert(i, chr);
@@ -324,9 +308,25 @@ impl Tui<TuiEvent, Command> for State {
                     self.focus = Focus::ChatInput(i + 1)
                 }
             }
-            TuiEvent::LoggedIn(name) => self.current_user = Some(CurrentUser { id: 0, name }),
-            TuiEvent::HealthCheck(is_connected) => self.connected_with_server = is_connected,
-            _ => {}
+            TuiEvent::SetUserName(name) => {
+                self.current_user = Some(UserProfile {
+                    id: 0,
+                    name,
+                    is_logged_in: false,
+                })
+            }
+            TuiEvent::LoggedIn => {
+                if let Some(user) = &mut self.current_user {
+                    user.is_logged_in = true;
+                }
+            }
+            TuiEvent::HealthCheck => self.last_healthcheck = Utc::now(),
+            TuiEvent::Channels(channels) => {
+                info!("{channels:?}")
+            }
+            TuiEvent::Disconnected => {
+                info!("TODO reconnect logic");
+            }
         }
         Ok(())
     }

@@ -14,6 +14,7 @@ pub trait Deserialize: Sized {
 pub enum ServerPacketType {
     Healthcheck = 0x00,
     LoginAck = 0x01,
+    Channels = 0x05,
 }
 
 impl Deserialize for ServerPacketType {
@@ -26,12 +27,11 @@ impl Deserialize for ServerPacketType {
     }
 }
 
-
-
 #[derive(Debug, Clone)]
 pub enum ServerPayload {
     Health(HealthCheckPacket),
     Login(LoginAckPacket),
+    Channels(GetChannelsResponsePacket),
 }
 
 impl From<ServerPayload> for Payload {
@@ -52,13 +52,28 @@ impl ServerPayload {
                     None
                 };
 
-                Ok(ServerPayload::Login(LoginAckPacket { status, error_message }).into())
+                Ok(ServerPayload::Login(LoginAckPacket { status, error_message }))
             }
             ServerPacketType::Healthcheck => {
                 let kind = HealthKind::deserialize(&bytes[0..1])?;
-                Ok(ServerPayload::Health(HealthCheckPacket { kind }).into())
+                Ok(ServerPayload::Health(HealthCheckPacket { kind }))
             }
-            packet => Err(anyhow!("deserialization not yet implemented for {packet:?}")),
+            ServerPacketType::Channels => {
+                let status = Status::deserialize(&bytes[0..1])?;
+                let channels = vec![];
+
+                let error_message = if status == Status::Failed {
+                    Some(String::deserialize(&bytes[1..])?)
+                } else {
+                    None
+                };
+
+                Ok(ServerPayload::Channels(GetChannelsResponsePacket {
+                    status,
+                    channels,
+                    error_message,
+                }))
+            }
         }
     }
 }
@@ -77,7 +92,7 @@ impl Deserialize for Status {
             0x00 => Ok(Status::Success),
             0x01 => Ok(Status::Failed),
             0x02 => Ok(Status::Notification),
-            _ => return Err(anyhow!("Unknown status byte")),
+            _ => Err(anyhow!("Unknown status byte")),
         }
     }
 }
@@ -102,7 +117,7 @@ impl Deserialize for HealthKind {
         match bytes[0] {
             0x00 => Ok(HealthKind::Ping),
             0x01 => Ok(HealthKind::Pong),
-            k => return Err(anyhow!("Unknown health check kind {k}")),
+            k => Err(anyhow!("Unknown health check kind {k}")),
         }
     }
 }
@@ -111,8 +126,6 @@ impl Deserialize for HealthKind {
 pub struct HealthCheckPacket {
     pub kind: HealthKind,
 }
-
-
 
 #[derive(Debug, Clone)]
 pub struct LoginAckPacket {
@@ -145,7 +158,7 @@ pub struct ChannelsListPacket {
 pub struct GetChannelsResponsePacket {
     pub status: Status,
     pub channels: Vec<Channel>,
-    pub error_message: String,
+    pub error_message: Option<String>,
 }
 
 #[derive(Debug, Clone)]

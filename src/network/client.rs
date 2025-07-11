@@ -2,9 +2,9 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use anyhow::{anyhow, Result};
-use clap::builder::Str;
+use anyhow::{Result, anyhow};
 use clap::Error;
+use clap::builder::Str;
 use futures::lock;
 use log::{debug, error, info};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -18,20 +18,23 @@ use tokio::time::{Duration, sleep};
 use crate::network::protocol::client::{ClientPacketType, ClientPayload, LoginPacket, Serialize};
 use crate::network::protocol::header::{Header, PacketType};
 use crate::network::protocol::server::{Deserialize, HealthCheckPacket, HealthKind, ServerPacketType, ServerPayload, Status};
-use crate::tui::TuiEvent;
+use crate::tui::events::TuiEvent;
+use crate::tui::framework::Tui;
 
 pub const MAX_MESSAGE_LENGTH: usize = 1024; // TODO figure out actual max size
 
 pub struct Client {
     is_connected: bool,
     write_stream: Option<Arc<Mutex<OwnedWriteHalf>>>,
+    event_send: Sender<TuiEvent>,
 }
 
 impl Client {
-    pub fn new() -> Self {
+    pub fn new(event_send: Sender<TuiEvent>) -> Self {
         Client {
             is_connected: false,
             write_stream: None,
+            event_send,
         }
     }
     pub async fn connect(&mut self, target_addr: SocketAddr) -> Result<()> {
@@ -48,87 +51,96 @@ impl Client {
         info!("Connected to {target_addr} from {src_addr}");
 
         self.receiving_task(read_stream, write_stream).await;
-
+        self.event_send.send(TuiEvent::HealthCheck).await?;
         Ok(())
     }
 
+    pub async fn login(&mut self, username: String, password: String) -> Result<()> {
+        let mut write_stream = self.write_stream.as_mut().ok_or_else(|| anyhow!("Not connected to server"))?.lock().await;
 
-    pub async fn login(&mut self, username:String, password:String) -> Result<()>{
-        let mut write_stream = self
-            .write_stream
-            .as_mut()
-            .ok_or_else(|| anyhow!("Not connected to server"))?
-            .lock()
-            .await;
+        Self::send_message(
+            &mut write_stream,
+            ClientPacketType::Login,
+            ClientPayload::Login(LoginPacket { username, password }),
+        )
+        .await
+    }
 
+    pub async fn request_channels(&mut self) -> Result<()> {
+        let mut write_stream = self.write_stream.as_mut().ok_or_else(|| anyhow!("Not connected to server"))?.lock().await;
 
-        Self::send_message(&mut write_stream, ClientPacketType::Login, ClientPayload::Login(LoginPacket { username, password })).await
-
+        Self::send_message(&mut write_stream, ClientPacketType::Channels, ClientPayload::Channels).await
     }
 
     async fn receiving_task(&mut self, mut read_stream: OwnedReadHalf, write_stream: Arc<Mutex<OwnedWriteHalf>>) {
         info!("Started receiving task");
         let write_stream = self.write_stream.clone();
+        let event_send = self.event_send.clone();
         tokio::spawn(async move {
             let mut header_buffer: [u8; 10] = [0; 10];
             let mut payload_buffer: [u8; MAX_MESSAGE_LENGTH] = [0; MAX_MESSAGE_LENGTH];
-            let mut stream = if let Some(stream) = write_stream  {
-              stream
+            let mut stream = if let Some(stream) = write_stream {
+                stream
             } else {
-              error!("No write stream available");
-              return
+                error!("No write stream available");
+                return;
             };
-            
             loop {
                 match Self::read_message(&mut read_stream, &mut header_buffer, &mut payload_buffer).await {
                     Ok(payload) => {
-                        if let Err(e) = Self::handle_message(payload, &mut stream).await {
-                            error!("Error while reading message: {e:?}");
+                        if let Err(e) = Self::handle_message(payload, &mut stream, event_send.clone()).await {
+                            error!("Error while handling message: {e:?}");
                         }
                     }
                     Err(e) => {
                         error!("Error while reading message: {e:?}");
+                        let _ = event_send.send(TuiEvent::Disconnected).await;
                         break;
                     }
                 }
             }
+
             info!("Stopped receiving task");
         });
     }
 
-    async fn handle_message(payload: ServerPayload, stream: &mut Arc<Mutex<OwnedWriteHalf>>) -> Result<()> {
+    async fn handle_message(payload: ServerPayload, stream: &mut Arc<Mutex<OwnedWriteHalf>>, event_send: Sender<TuiEvent>) -> Result<()> {
         match payload {
-            ServerPayload::Health(packet) => {
-              match packet.kind {
+            ServerPayload::Health(packet) => match packet.kind {
                 HealthKind::Ping => {
-                  let mut stream = stream.lock().await;
-                  let payload = ClientPayload::Health( HealthCheckPacket{kind: HealthKind::Pong});
-                  Self::send_message(&mut stream, ClientPacketType::Healthcheck, payload).await;
-                  Ok(())
-                },
+                    let mut stream = stream.lock().await;
+                    let payload = ClientPayload::Health(HealthCheckPacket { kind: HealthKind::Pong });
+                    Self::send_message(&mut stream, ClientPacketType::Healthcheck, payload).await?;
+                    event_send.send(TuiEvent::HealthCheck).await?;
+                    Ok(())
+                }
                 HealthKind::Pong => panic!("todo"),
-              }
             },
-            ServerPayload::Login(packet) => {
-              match packet.status {
+            ServerPayload::Login(packet) => match packet.status {
                 Status::Success => {
-                  info!("succefully logged in");
-                  Ok(())
-                },
-                Status::Failed => {
-                  match packet.error_message {
+                    info!("succefully logged in");
+                    event_send.send(TuiEvent::LoggedIn).await?;
+                    Ok(())
+                }
+                Status::Failed => match packet.error_message {
                     Some(message) => {
-                      error!("failed to log in {}", message);
-                      Err(anyhow!("failed to log in {}", message))
-                    },
+                        error!("failed to log in {message}");
+                        Err(anyhow!("failed to log in {}", message))
+                    }
                     None => {
-                      error!("failed to log in");
-                      Err(anyhow!("failed to log in"))
-                    },
-                  }
+                        error!("failed to log in");
+                        Err(anyhow!("failed to log in"))
+                    }
                 },
                 Status::Notification => panic!("todo"),
-              }
+            },
+            ServerPayload::Channels(packet) => match packet.status {
+                Status::Success => {
+                    event_send.send(TuiEvent::Channels(packet.channels)).await?;
+                    Ok(())
+                }
+                Status::Failed => todo!(),
+                Status::Notification => panic!("todo"),
             },
         }
     }
@@ -136,7 +148,6 @@ impl Client {
 
 impl Client {
     pub async fn send_message(stream: &mut OwnedWriteHalf, packet_type: ClientPacketType, payload: ClientPayload) -> Result<()> {
-
         debug!("Sending packet type: {packet_type:?}");
 
         let payload_serialized = payload.serialize();
@@ -171,7 +182,7 @@ impl Client {
         let packet_type = match header.packet_type {
             PacketType::Server(packet_type) => packet_type,
             PacketType::Client(packet_type) => return Err(anyhow!("Recevied packet type {packet_type:?}, which is a client packet")),
-        }; 
+        };
 
         let payload = ServerPayload::deserialize_packet(payload_buffer, packet_type)?;
         debug!("Deserialized payload {payload:?}");

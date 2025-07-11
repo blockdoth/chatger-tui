@@ -1,3 +1,6 @@
+use anyhow::Result;
+
+use crate::network::protocol::server::Deserialize;
 pub mod client;
 pub mod header;
 pub mod server;
@@ -52,4 +55,20 @@ pub struct Channel {
     pub channel_id: u64,
     pub name: String,
     pub icon_id: u64,
+}
+
+impl Deserialize for Channel {
+    fn deserialize(bytes: &[u8]) -> Result<Self> {
+        let channel_id = u64::from_be_bytes(bytes[0..8].try_into()?);
+
+        let name = String::deserialize(&bytes[8..])?;
+        let icon_id_start = 8 + name.len() + 1;
+        let icon_id = u64::from_be_bytes(bytes[icon_id_start..icon_id_start + 8].try_into()?);
+
+        Ok(Channel {
+            channel_id,
+            name: todo!(),
+            icon_id: todo!(),
+        })
+    }
 }

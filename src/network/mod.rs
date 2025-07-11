@@ -12,13 +12,13 @@ use tokio::sync::Mutex;
 use tokio::sync::mpsc::Sender;
 use tokio::task::JoinHandle;
 
-use crate::network::client::{Client};
-use crate::tui::TuiEvent;
+use crate::network::client::Client;
+use crate::tui::events::TuiEvent;
 
 pub async fn start_client(event_send: Sender<TuiEvent>, address: SocketAddr, username: String, password: String) {
     info!("Starting client with args: {address} {username} {password}");
 
-    let mut client = Client::new();
+    let mut client = Client::new(event_send.clone());
 
     if let Err(e) = client.connect(address).await {
         error!("Failed to connect {e}");
@@ -28,7 +28,8 @@ pub async fn start_client(event_send: Sender<TuiEvent>, address: SocketAddr, use
         error!("Failed to login {e}");
     }
 
-    event_send.send(TuiEvent::LoggedIn(username)).await.expect("todo error handling");
+    client.request_channels().await;
+    event_send.send(TuiEvent::SetUserName(username)).await;
 
     let polling_interval = 1;
 }

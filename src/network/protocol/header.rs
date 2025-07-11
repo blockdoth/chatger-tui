@@ -3,13 +3,11 @@ use anyhow::{Result, anyhow};
 use crate::network::protocol::client::{ClientPacketType, ClientPayload, Serialize};
 use crate::network::protocol::server::{Deserialize, ServerPacketType, ServerPayload};
 
-
 #[derive(Debug, Clone)]
 pub enum Payload {
     Client(ClientPayload),
     Server(ServerPayload),
 }
-
 
 #[derive(Debug)]
 pub struct Header {
@@ -73,7 +71,7 @@ pub enum PacketType {
 
 impl Deserialize for PacketType {
     fn deserialize(bytes: &[u8]) -> Result<Self> {
-        let byte = bytes.get(0).ok_or_else(|| anyhow!("Empty byte slice"))?;
+        let byte = bytes.first().ok_or_else(|| anyhow!("Empty byte slice"))?;
 
         // high bit (0x80) indicates Client
         if *byte & 0x80 == 0 {
@@ -101,7 +99,6 @@ impl Serialize for PacketType {
     }
 }
 
-
 impl From<ServerPacketType> for PacketType {
     fn from(packet_type: ServerPacketType) -> Self {
         PacketType::Server(packet_type)
@@ -113,8 +110,6 @@ impl From<ClientPacketType> for PacketType {
         PacketType::Client(packet_type)
     }
 }
-
-
 
 #[repr(u8)]
 #[derive(Debug, Clone)]

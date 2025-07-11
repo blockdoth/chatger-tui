@@ -14,6 +14,7 @@ pub trait Serialize {
 pub enum ClientPacketType {
     Healthcheck = 0x80,
     Login = 0x81,
+    Channels = 0x85,
 }
 
 impl Serialize for ClientPacketType {
@@ -25,8 +26,8 @@ impl Serialize for ClientPacketType {
 #[derive(Debug, Clone)]
 pub enum ClientPayload {
     Login(LoginPacket),
-    Health(HealthCheckPacket)
-    // Send(SendMediaPacket),
+    Health(HealthCheckPacket), // Send(SendMediaPacket),
+    Channels,
 }
 impl From<ClientPayload> for Payload {
     fn from(payload: ClientPayload) -> Self {
@@ -34,12 +35,12 @@ impl From<ClientPayload> for Payload {
     }
 }
 
-
 impl Serialize for ClientPayload {
     fn serialize(self) -> Vec<u8> {
         match self {
             ClientPayload::Login(packet) => packet.serialize(),
             ClientPayload::Health(packet) => packet.serialize(),
+            ClientPayload::Channels => vec![],
         }
     }
 }
@@ -49,7 +50,6 @@ impl Serialize for HealthKind {
         vec![self as u8]
     }
 }
-
 
 impl Serialize for HealthCheckPacket {
     fn serialize(self) -> Vec<u8> {

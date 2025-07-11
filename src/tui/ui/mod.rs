@@ -1,6 +1,7 @@
 mod borders;
 
 use std::default;
+use std::fmt::format;
 
 use chrono::{Duration, Utc};
 use ratatui::Frame;
@@ -215,11 +216,22 @@ fn render_chat_history(state: &State, frame: &mut Frame, area: Rect) {
         ..border::PLAIN
     };
 
-    let chatlog: Vec<Line> = state
+    // TODO make less ugly
+    let empty = &vec![];
+    let chat_log = state
         .chat_history
         .get(&state.channels.get(state.active_channel_idx).unwrap().id)
-        .unwrap_or(&vec![])
+        .unwrap_or(empty);
+
+    let current_message_line_count = chat_log.len();
+
+    let start_index = current_message_line_count
+        .saturating_sub(area.height.saturating_sub(2) as usize)
+        .saturating_sub(state.chat_scroll_offset);
+
+    let chatlog_lines: Vec<Line> = chat_log
         .iter()
+        .skip(start_index)
         .flat_map(|chat_message| {
             let timestamp = chat_message.timestamp.format("%H:%M:%S").to_string();
 
@@ -261,7 +273,7 @@ fn render_chat_history(state: &State, frame: &mut Frame, area: Rect) {
 
     let (borders, border_style, border_corners) = borders_chat_history(state);
 
-    let widget = Paragraph::new(Text::from(chatlog)).wrap(Wrap { trim: false }).block(
+    let widget = Paragraph::new(Text::from(chatlog_lines)).wrap(Wrap { trim: false }).block(
         Block::default()
             .padding(PADDING)
             .border_set(border_corners)
@@ -281,21 +293,26 @@ fn render_chat_input(state: &State, frame: &mut Frame, area: Rect) {
         ..border::PLAIN
     };
 
-    let input_text: Vec<Span> = state
-        .chat_input
-        .chars()
-        .enumerate()
-        .map(|(idx, c)| {
-            if let Focus::ChatInput(focussed_idx) = state.focus
-                && focussed_idx == idx
-            {
-                Span::styled(c.to_string(), Modifier::UNDERLINED)
-            } else {
-                Span::from(c.to_string())
-            }
-        })
-        .collect();
-
+    let input_text: Vec<Span> = match state.focus {
+        Focus::ChatInput(_) => state
+            .chat_input
+            .chars()
+            .enumerate()
+            .map(|(idx, c)| {
+                if let Focus::ChatInput(focussed_idx) = state.focus
+                    && focussed_idx == idx
+                {
+                    Span::styled(c.to_string(), Modifier::UNDERLINED)
+                } else {
+                    Span::from(c.to_string())
+                }
+            })
+            .collect(),
+        _ => vec![Span::styled(
+            format!("Message #{}", state.channels.get(state.active_channel_idx).unwrap().name),
+            Style::default().add_modifier(Modifier::DIM | Modifier::ITALIC),
+        )],
+    };
     let input_line = vec![Line::from(Span::from("")), Line::from(input_text)];
 
     let (borders, border_style, border_corners) = borders_input(state);
@@ -378,7 +395,7 @@ fn render_logs(state: &State, frame: &mut Frame, area: Rect) {
     let current_log_count = state.logs.len();
     let start_index = current_log_count
         .saturating_sub(area.height.saturating_sub(2) as usize)
-        .saturating_sub(state.logs_scroll_offset);
+        .saturating_sub(state.log_scroll_offset);
 
     let logs: Vec<Line> = state.logs.iter().skip(start_index).map(|entry| entry.format()).collect();
 
@@ -390,7 +407,7 @@ fn render_logs(state: &State, frame: &mut Frame, area: Rect) {
             .border_set(border_corners)
             .borders(borders)
             .border_style(border_style)
-            .title(Span::styled("Logs".to_string(), HEADER_STYLE)),
+            .title(Span::styled("Log".to_string(), HEADER_STYLE)),
     );
     frame.render_widget(widget, area);
 }

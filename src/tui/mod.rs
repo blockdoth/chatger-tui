@@ -45,7 +45,6 @@ pub enum Command {
 pub struct State {
     should_quit: bool,
     logs: Vec<LogEntry>,
-    logs_scroll_offset: usize,
     channels: Vec<Channel>,
     users: Vec<User>,
     chat_history: HashMap<ChannelId, Vec<ChatMessage>>,
@@ -55,6 +54,8 @@ pub struct State {
     current_user: Option<UserProfile>,
     last_healthcheck: DateTime<Utc>,
     show_logs: bool,
+    log_scroll_offset: usize,
+    chat_scroll_offset: usize,
 }
 
 impl State {
@@ -98,7 +99,8 @@ impl State {
             should_quit: false,
             last_healthcheck: Utc::now().checked_sub_days(Days::new(1)).unwrap(),
             show_logs: true,
-            logs_scroll_offset: 0,
+            log_scroll_offset: 0,
+            chat_scroll_offset: 0,
             logs: vec![],
             active_channel_idx: 0,
             focus: Focus::Channels,
@@ -159,15 +161,18 @@ impl Tui<TuiEvent, Command> for State {
                     KeyCode::Right => Some(TuiEvent::FocusChange(Focus::ChatHistory)),
                     KeyCode::Char('q') | KeyCode::Char('Q') => Some(TuiEvent::Exit),
                     KeyCode::Char('l') | KeyCode::Char('L') => Some(TuiEvent::ToggleLogs),
+                    KeyCode::Char(_) => Some(TuiEvent::FocusChange(Focus::ChatInput(0))),
                     _ => None,
                 },
                 Focus::ChatHistory => match key_event.code {
                     KeyCode::Left => Some(TuiEvent::FocusChange(Focus::Channels)),
                     KeyCode::Right if self.show_logs => Some(TuiEvent::FocusChange(Focus::Logs)),
                     KeyCode::Right => Some(TuiEvent::FocusChange(Focus::Users)),
-                    KeyCode::Down | KeyCode::Enter => Some(TuiEvent::FocusChange(Focus::ChatInput(0))),
+                    KeyCode::Up => Some(TuiEvent::ScrollUp),
+                    KeyCode::Down => Some(TuiEvent::ScrollDown),
                     KeyCode::Char('q') | KeyCode::Char('Q') => Some(TuiEvent::Exit),
                     KeyCode::Char('l') | KeyCode::Char('L') => Some(TuiEvent::ToggleLogs),
+                    KeyCode::Char(_) => Some(TuiEvent::FocusChange(Focus::ChatInput(0))),
                     _ => None,
                 },
                 Focus::ChatInput(_) => match key_event.code {
@@ -187,14 +192,18 @@ impl Tui<TuiEvent, Command> for State {
                     KeyCode::Left => Some(TuiEvent::FocusChange(Focus::ChatHistory)),
                     KeyCode::Char('q') | KeyCode::Char('Q') => Some(TuiEvent::Exit),
                     KeyCode::Char('l') | KeyCode::Char('L') => Some(TuiEvent::ToggleLogs),
+                    KeyCode::Char(_) => Some(TuiEvent::FocusChange(Focus::ChatInput(0))),
                     _ => None,
                 },
                 Focus::Logs => match key_event.code {
                     KeyCode::Left => Some(TuiEvent::FocusChange(Focus::ChatHistory)),
                     KeyCode::Right => Some(TuiEvent::FocusChange(Focus::Users)),
-                    KeyCode::Down | KeyCode::Enter => Some(TuiEvent::FocusChange(Focus::ChatInput(0))),
+                    KeyCode::Up => Some(TuiEvent::ScrollUp),
+                    KeyCode::Down => Some(TuiEvent::ScrollDown),
                     KeyCode::Char('q') | KeyCode::Char('Q') => Some(TuiEvent::Exit),
                     KeyCode::Char('l') | KeyCode::Char('L') => Some(TuiEvent::ToggleLogs),
+                    KeyCode::Char(_) => Some(TuiEvent::FocusChange(Focus::ChatInput(0))),
+
                     _ => None,
                 },
             },
@@ -301,6 +310,24 @@ impl Tui<TuiEvent, Command> for State {
                 }
             }
             TuiEvent::InputEnter => {} // Do nothing if above case falls through
+            TuiEvent::ScrollDown => match self.focus {
+                Focus::ChatHistory => {
+                    self.chat_scroll_offset = self.chat_scroll_offset.saturating_sub(1);
+                }
+                Focus::Logs => {
+                    self.log_scroll_offset = self.log_scroll_offset.saturating_sub(1);
+                }
+                _ => {}
+            },
+            TuiEvent::ScrollUp => match self.focus {
+                Focus::ChatHistory => {
+                    self.chat_scroll_offset = self.chat_scroll_offset.saturating_add(1);
+                }
+                Focus::Logs => {
+                    self.log_scroll_offset = self.log_scroll_offset.saturating_add(1);
+                }
+                _ => {}
+            },
             TuiEvent::InputChar(chr) => {
                 if let Focus::ChatInput(i) = self.focus {
                     self.chat_input.insert(i, chr);

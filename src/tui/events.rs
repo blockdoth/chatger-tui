@@ -24,6 +24,8 @@ pub enum TuiEvent {
     Disconnected,
     Channels(Vec<Channel>),
     ChannelIDs(Vec<u64>),
+    ScrollUp,
+    ScrollDown,
 }
 
 impl FromLog for TuiEvent {

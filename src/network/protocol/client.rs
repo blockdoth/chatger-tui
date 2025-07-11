@@ -14,6 +14,7 @@ pub trait Serialize {
 pub enum ClientPacketType {
     Healthcheck = 0x80,
     Login = 0x81,
+    ChannelsIDs = 0x84,
     Channels = 0x85,
 }
 
@@ -27,7 +28,8 @@ impl Serialize for ClientPacketType {
 pub enum ClientPayload {
     Login(LoginPacket),
     Health(HealthCheckPacket), // Send(SendMediaPacket),
-    Channels,
+    Channels(GetChannelsPacket),
+    ChannelsList,
 }
 impl From<ClientPayload> for Payload {
     fn from(payload: ClientPayload) -> Self {
@@ -40,7 +42,8 @@ impl Serialize for ClientPayload {
         match self {
             ClientPayload::Login(packet) => packet.serialize(),
             ClientPayload::Health(packet) => packet.serialize(),
-            ClientPayload::Channels => vec![],
+            ClientPayload::Channels(packet) => packet.serialize(),
+            ClientPayload::ChannelsList => vec![],
         }
     }
 }
@@ -74,6 +77,23 @@ impl Serialize for LoginPacket {
 }
 
 #[derive(Debug, Clone)]
+pub struct GetChannelsPacket {
+    pub channel_ids: Vec<u64>,
+}
+
+impl Serialize for GetChannelsPacket {
+    fn serialize(self) -> Vec<u8> {
+        let channel_count = self.channel_ids.len();
+        let mut bytes = Vec::with_capacity(channel_count * 8 + 2);
+        bytes.extend((channel_count as u16).to_be_bytes());
+        for channel_id in self.channel_ids {
+            bytes.extend_from_slice(&channel_id.to_be_bytes());
+        }
+        bytes
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct SendMessagePacket {
     pub channel_id: u64,
     pub reply_id: u64,
@@ -86,11 +106,6 @@ pub struct SendMediaPacket {
     pub filename: String,
     pub media_type: MediaType,
     pub media_data: Vec<u8>,
-}
-
-#[derive(Debug, Clone)]
-pub struct GetChannelsPacket {
-    pub channel_ids: Vec<u64>,
 }
 
 #[derive(Debug, Clone)]

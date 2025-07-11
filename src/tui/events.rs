@@ -23,6 +23,7 @@ pub enum TuiEvent {
     SetUserName(String),
     Disconnected,
     Channels(Vec<Channel>),
+    ChannelIDs(Vec<u64>),
 }
 
 impl FromLog for TuiEvent {

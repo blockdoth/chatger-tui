@@ -15,7 +15,7 @@ use tokio::sync::{Mutex, oneshot};
 use tokio::task::JoinHandle;
 use tokio::time::{Duration, sleep};
 
-use crate::network::protocol::client::{ClientPacketType, ClientPayload, LoginPacket, Serialize};
+use crate::network::protocol::client::{ClientPacketType, ClientPayload, GetChannelsPacket, LoginPacket, Serialize};
 use crate::network::protocol::header::{Header, PacketType};
 use crate::network::protocol::server::{Deserialize, HealthCheckPacket, HealthKind, ServerPacketType, ServerPayload, Status};
 use crate::tui::events::TuiEvent;
@@ -66,10 +66,21 @@ impl Client {
         .await
     }
 
-    pub async fn request_channels(&mut self) -> Result<()> {
+    pub async fn request_channels(&mut self, channel_ids: Vec<u64>) -> Result<()> {
         let mut write_stream = self.write_stream.as_mut().ok_or_else(|| anyhow!("Not connected to server"))?.lock().await;
 
-        Self::send_message(&mut write_stream, ClientPacketType::Channels, ClientPayload::Channels).await
+        Self::send_message(
+            &mut write_stream,
+            ClientPacketType::Channels,
+            ClientPayload::Channels(GetChannelsPacket { channel_ids }),
+        )
+        .await
+    }
+
+    pub async fn request_channel_ids(&mut self) -> Result<()> {
+        let mut write_stream = self.write_stream.as_mut().ok_or_else(|| anyhow!("Not connected to server"))?.lock().await;
+
+        Self::send_message(&mut write_stream, ClientPacketType::ChannelsIDs, ClientPayload::ChannelsList).await
     }
 
     async fn receiving_task(&mut self, mut read_stream: OwnedReadHalf, write_stream: Arc<Mutex<OwnedWriteHalf>>) {
@@ -142,6 +153,14 @@ impl Client {
                 Status::Failed => todo!(),
                 Status::Notification => panic!("todo"),
             },
+            ServerPayload::ChannelsList(packet) => match packet.status {
+                Status::Success => {
+                    event_send.send(TuiEvent::ChannelIDs(packet.channel_ids)).await?;
+                    Ok(())
+                }
+                Status::Failed => todo!(),
+                Status::Notification => panic!("todo"),
+            },
         }
     }
 }
@@ -167,11 +186,10 @@ impl Client {
     }
 
     pub async fn read_message(stream: &mut OwnedReadHalf, header_buffer: &mut [u8], payload_buffer: &mut [u8]) -> Result<ServerPayload> {
-        debug!("Waiting to read header");
         stream.read_exact(&mut header_buffer[..]).await?;
 
         debug!("Received header bytes {header_buffer:?}");
-        let header = Header::deserialize(header_buffer)?;
+        let header = Header::deserialize(header_buffer)?.0;
         debug!("Received {header:?}");
 
         let payload_size = header.length;

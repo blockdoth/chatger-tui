@@ -28,7 +28,8 @@ pub async fn start_client(event_send: Sender<TuiEvent>, address: SocketAddr, use
         error!("Failed to login {e}");
     }
 
-    client.request_channels().await;
+    client.request_channel_ids().await;
+    // client.request_channels(vec![10, 11]).await;
     event_send.send(TuiEvent::SetUserName(username)).await;
 
     let polling_interval = 1;

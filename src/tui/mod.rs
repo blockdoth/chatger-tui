@@ -324,6 +324,9 @@ impl Tui<TuiEvent, Command> for State {
             TuiEvent::Channels(channels) => {
                 info!("{channels:?}")
             }
+            TuiEvent::ChannelIDs(channel_ids) => {
+                info!("{channel_ids:?}")
+            }
             TuiEvent::Disconnected => {
                 info!("TODO reconnect logic");
             }

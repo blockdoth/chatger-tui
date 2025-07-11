@@ -1,4 +1,5 @@
 use anyhow::{Result, anyhow};
+use futures::channel;
 use log::Log;
 
 use crate::network::client::MAX_MESSAGE_LENGTH;
@@ -6,7 +7,7 @@ use crate::network::protocol::header::Payload;
 use crate::network::protocol::{Channel, HistoryMessage, MediaType, UserData, UserStatus};
 
 pub trait Deserialize: Sized {
-    fn deserialize(bytes: &[u8]) -> Result<Self>;
+    fn deserialize(bytes: &[u8]) -> Result<(Self, usize)>;
 }
 
 #[repr(u8)]
@@ -14,15 +15,18 @@ pub trait Deserialize: Sized {
 pub enum ServerPacketType {
     Healthcheck = 0x00,
     LoginAck = 0x01,
+    ChannelsIDs = 0x04,
     Channels = 0x05,
 }
 
 impl Deserialize for ServerPacketType {
-    fn deserialize(bytes: &[u8]) -> Result<Self> {
+    fn deserialize(bytes: &[u8]) -> Result<(Self, usize)> {
         match bytes[0] {
-            0x00 => Ok(ServerPacketType::Healthcheck),
-            0x01 => Ok(ServerPacketType::LoginAck),
-            other => Err(anyhow!("Unknown ServerPacketType value: {:#04x}", other)),
+            0x00 => Ok((ServerPacketType::Healthcheck, 1)),
+            0x01 => Ok((ServerPacketType::LoginAck, 1)),
+            0x04 => Ok((ServerPacketType::ChannelsIDs, 1)),
+            0x05 => Ok((ServerPacketType::Channels, 1)),
+            other => Err(anyhow!("Unknown ServerPacketType value: {}", other)),
         }
     }
 }
@@ -32,6 +36,7 @@ pub enum ServerPayload {
     Health(HealthCheckPacket),
     Login(LoginAckPacket),
     Channels(GetChannelsResponsePacket),
+    ChannelsList(ChannelsListPacket),
 }
 
 impl From<ServerPayload> for Payload {
@@ -44,10 +49,10 @@ impl ServerPayload {
     pub fn deserialize_packet(bytes: &[u8], packet_type: ServerPacketType) -> Result<Self> {
         match packet_type {
             ServerPacketType::LoginAck => {
-                let status = Status::deserialize(&bytes[0..1])?;
+                let (status, _) = Status::deserialize(&bytes[0..1])?;
 
                 let error_message = if status == Status::Failed {
-                    Some(String::deserialize(&bytes[1..])?)
+                    Some(String::deserialize(&bytes[1..])?.0)
                 } else {
                     None
                 };
@@ -55,15 +60,49 @@ impl ServerPayload {
                 Ok(ServerPayload::Login(LoginAckPacket { status, error_message }))
             }
             ServerPacketType::Healthcheck => {
-                let kind = HealthKind::deserialize(&bytes[0..1])?;
+                let (kind, _) = HealthKind::deserialize(&bytes[0..1])?;
                 Ok(ServerPayload::Health(HealthCheckPacket { kind }))
             }
-            ServerPacketType::Channels => {
-                let status = Status::deserialize(&bytes[0..1])?;
-                let channels = vec![];
+
+            ServerPacketType::ChannelsIDs => {
+                let (status, _) = Status::deserialize(&bytes[0..1])?;
+                let channels_count = u16::from_be_bytes(bytes[1..3].try_into()?) as usize;
+
+                let mut byte_index = 4;
+                let mut channel_ids = Vec::with_capacity(channels_count);
+                for _ in 0..channels_count {
+                    let channel_id = u64::from_be_bytes(bytes[byte_index..byte_index + 8].try_into()?);
+                    channel_ids.push(channel_id);
+                    byte_index += 8;
+                }
 
                 let error_message = if status == Status::Failed {
-                    Some(String::deserialize(&bytes[1..])?)
+                    Some(String::deserialize(&bytes[1..])?.0)
+                } else {
+                    None
+                };
+
+                Ok(ServerPayload::ChannelsList(ChannelsListPacket {
+                    status,
+                    channel_ids,
+                    error_message,
+                }))
+            }
+            ServerPacketType::Channels => {
+                let (status, _) = Status::deserialize(&bytes[0..1])?;
+                let channels_count = u16::from_be_bytes(bytes[1..3].try_into()?) as usize;
+
+                let mut channels = Vec::with_capacity(channels_count);
+
+                let mut byte_index = 4;
+                for _ in 0..channels_count {
+                    let (channel, read_bytes) = Channel::deserialize(&bytes[byte_index..])?;
+                    channels.push(channel);
+                    byte_index += read_bytes;
+                }
+
+                let error_message = if status == Status::Failed {
+                    Some(String::deserialize(&bytes[1..])?.0)
                 } else {
                     None
                 };
@@ -87,21 +126,21 @@ pub enum Status {
 }
 
 impl Deserialize for Status {
-    fn deserialize(bytes: &[u8]) -> Result<Self> {
+    fn deserialize(bytes: &[u8]) -> Result<(Self, usize)> {
         match bytes[0] {
-            0x00 => Ok(Status::Success),
-            0x01 => Ok(Status::Failed),
-            0x02 => Ok(Status::Notification),
+            0x00 => Ok((Status::Success, 1)),
+            0x01 => Ok((Status::Failed, 1)),
+            0x02 => Ok((Status::Notification, 1)),
             _ => Err(anyhow!("Unknown status byte")),
         }
     }
 }
 
 impl Deserialize for String {
-    fn deserialize(bytes: &[u8]) -> Result<Self> {
+    fn deserialize(bytes: &[u8]) -> Result<(Self, usize)> {
         let length = bytes.iter().position(|&b| b == 0).unwrap_or(MAX_MESSAGE_LENGTH);
         let string = String::from_utf8(bytes[0..length].to_vec())?;
-        Ok(string)
+        Ok((string, length))
     }
 }
 
@@ -113,10 +152,10 @@ pub enum HealthKind {
 }
 
 impl Deserialize for HealthKind {
-    fn deserialize(bytes: &[u8]) -> Result<Self> {
+    fn deserialize(bytes: &[u8]) -> Result<(Self, usize)> {
         match bytes[0] {
-            0x00 => Ok(HealthKind::Ping),
-            0x01 => Ok(HealthKind::Pong),
+            0x00 => Ok((HealthKind::Ping, 1)),
+            0x01 => Ok((HealthKind::Pong, 1)),
             k => Err(anyhow!("Unknown health check kind {k}")),
         }
     }
@@ -151,7 +190,7 @@ pub struct SendMediaAckPacket {
 pub struct ChannelsListPacket {
     pub status: Status,
     pub channel_ids: Vec<u64>,
-    pub error_message: String,
+    pub error_message: Option<String>,
 }
 
 #[derive(Debug, Clone)]

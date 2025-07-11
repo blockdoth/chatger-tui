@@ -40,7 +40,7 @@ impl Serialize for Header {
 }
 
 impl Deserialize for Header {
-    fn deserialize(bytes: &[u8]) -> Result<Self> {
+    fn deserialize(bytes: &[u8]) -> Result<(Self, usize)> {
         if bytes.len() < 10 {
             return Err(anyhow!("Not enough bytes to deserialize Header"));
         }
@@ -50,16 +50,21 @@ impl Deserialize for Header {
         if magic_number != [b'C', b'H', b'T', b'G'] {
             return Err(anyhow!("Invalid magic number"));
         }
-        let version = PacketVersion::deserialize(&bytes[4..5])?;
-        let packet_type = PacketType::deserialize(&[bytes[5]])?;
+        let (version, version_size) = PacketVersion::deserialize(&bytes[4..5])?;
+        let (packet_type, packet_type_size) = PacketType::deserialize(&[bytes[5]])?;
         let length = u32::from_be_bytes(bytes[6..10].try_into()?);
 
-        Ok(Header {
-            magic_number,
-            version,
-            packet_type,
-            length,
-        })
+        let size = 4 + version_size + packet_type_size + 4;
+        assert_eq!(size, 10);
+        Ok((
+            Header {
+                magic_number,
+                version,
+                packet_type,
+                length,
+            },
+            10,
+        ))
     }
 }
 
@@ -70,16 +75,13 @@ pub enum PacketType {
 }
 
 impl Deserialize for PacketType {
-    fn deserialize(bytes: &[u8]) -> Result<Self> {
+    fn deserialize(bytes: &[u8]) -> Result<(Self, usize)> {
         let byte = bytes.first().ok_or_else(|| anyhow!("Empty byte slice"))?;
 
         // high bit (0x80) indicates Client
         if *byte & 0x80 == 0 {
-            match byte {
-                0x00 => Ok(PacketType::Server(ServerPacketType::Healthcheck)),
-                0x01 => Ok(PacketType::Server(ServerPacketType::LoginAck)),
-                b => Err(anyhow!("Unknown ServerPacketType: {b}",)),
-            }
+            let (packet_type, _) = ServerPacketType::deserialize(&[*byte])?; // Ugly
+            Ok((packet_type.into(), 1))
         } else {
             Err(anyhow!("Can not deserialize client packet, how did it get here {byte}"))
         }
@@ -118,9 +120,9 @@ pub enum PacketVersion {
 }
 
 impl Deserialize for PacketVersion {
-    fn deserialize(bytes: &[u8]) -> Result<Self> {
+    fn deserialize(bytes: &[u8]) -> Result<(Self, usize)> {
         match bytes[0] {
-            0x01 => Ok(PacketVersion::V1),
+            0x01 => Ok((PacketVersion::V1, 1)),
             other => Err(anyhow!("Unknown PacketVersion value: {:#04x}", other)),
         }
     }

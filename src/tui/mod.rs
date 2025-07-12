@@ -7,9 +7,9 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use anyhow::{Ok, Result};
+use anyhow::{Ok, Result, anyhow};
 use async_trait::async_trait;
-use chrono::{DateTime, Days, Utc};
+use chrono::{DateTime, Days, NaiveDateTime, Utc};
 use crossterm::event::{Event, KeyCode, KeyModifiers};
 use log::{debug, error, info};
 use ratatui::Frame;
@@ -314,9 +314,15 @@ impl Tui<TuiEvent> for State {
             }
 
             TuiEvent::Channels(channels) => {
-                debug!("recieved {channels:?}");
+                debug!("received {channels:?}");
                 for channel in channels {
+                    // I want to add the channel first and only then request
+                    // if I requested first to make the borrow checker happy it could fail and end up in a broken state
+                    // history would be incoming for a channel which is not added
+                    let channel_id = channel.channel_id;
+
                     self.channels.push(channel.into());
+                    client.request_history_by_timestamp(channel_id, Utc::now(), 50).await?;
                 }
             }
             TuiEvent::UserStatusesUpdate(status_updates) => {
@@ -358,6 +364,36 @@ impl Tui<TuiEvent> for State {
                     }
                 }
                 self.users.extend(new_users_map.into_values());
+            }
+            TuiEvent::HistoryUpdate(messages) => {
+                for message in messages {
+                    let author_name = self
+                        .users
+                        .iter()
+                        .find(|user| user.id == message.user_id)
+                        .map(|user| user.name.clone())
+                        .unwrap_or_else(|| "Unknown".to_string());
+
+                    let timestamp = DateTime::from_timestamp(message.sent_timestamp as i64, 0).ok_or_else(|| anyhow!("Invalid timestamp"))?;
+
+                    let display_message = ChatMessage {
+                        id: message.message_id,
+                        author_name,
+                        author_id: message.user_id,
+                        timestamp,
+                        message: message.message_text,
+                        status: ChatMessageStatus::Send,
+                    };
+
+                    let channel_id = message.channel_id;
+                    // TODO figure out what to do when we get message from channels we dont know the name off
+                    let display_messages = self.chat_history.entry(channel_id).or_default();
+
+                    if !display_messages.iter().any(|m| m.id == display_message.id) {
+                        debug!("inserting {display_message:?} into history of channel {channel_id}");
+                        display_messages.push(display_message);
+                    }
+                }
             }
 
             TuiEvent::Disconnected => {

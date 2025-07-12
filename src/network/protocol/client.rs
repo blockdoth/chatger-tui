@@ -4,7 +4,7 @@ use log::info;
 use crate::network::client::MAX_MESSAGE_LENGTH;
 use crate::network::protocol::header::Payload;
 use crate::network::protocol::server::{HealthCheckPacket, HealthKind, UsersPacket};
-use crate::network::protocol::{Anchor, MediaType, UserStatus};
+use crate::network::protocol::{MediaType, UserStatus};
 
 pub trait Serialize {
     fn serialize(self) -> Vec<u8>;
@@ -17,6 +17,7 @@ pub enum ClientPacketType {
     Login = 0x81,
     ChannelsList = 0x84,
     Channels = 0x85,
+    History = 0x86,
     UserStatuses = 0x87,
     Users = 0x88,
 }
@@ -30,11 +31,12 @@ impl Serialize for ClientPacketType {
 #[derive(Debug, Clone)]
 pub enum ClientPayload {
     Login(LoginPacket),
-    Health(HealthCheckPacket), // Send(SendMediaPacket),
+    Health(HealthCheckPacket),
     Channels(GetChannelsPacket),
     ChannelsList,
     UserStatuses,
     Users(GetUsersPacket),
+    History(GetHistoryPacket),
 }
 impl From<ClientPayload> for Payload {
     fn from(payload: ClientPayload) -> Self {
@@ -51,6 +53,7 @@ impl Serialize for ClientPayload {
             ClientPayload::ChannelsList => vec![],
             ClientPayload::UserStatuses => vec![],
             ClientPayload::Users(packet) => packet.serialize(),
+            ClientPayload::History(packet) => packet.serialize(),
         }
     }
 }
@@ -118,6 +121,44 @@ impl Serialize for GetUsersPacket {
 }
 
 #[derive(Debug, Clone)]
+pub enum Anchor {
+    Timestamp(u64), // MSB = 0
+    MessageId(u64), // MSB = 1
+}
+
+impl Serialize for Anchor {
+    fn serialize(self) -> Vec<u8> {
+        match self {
+            Anchor::Timestamp(anchor) => anchor.to_be_bytes().to_vec(),
+            Anchor::MessageId(anchor) => anchor.to_be_bytes().to_vec(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct GetHistoryPacket {
+    pub channel_id: u64,
+    pub anchor: Anchor,
+    pub num_messages_back: i8,
+}
+
+// [length|4]: 17
+// [packet content]: [channel_id|8][ anchor | 8 ][num_messages_back|1]
+//       [ anchor ]: [ [is_message_id|1bit] [message_id/unix_timestamp|63bit] | 8 ]
+//  num_messages_back is a 2s-complimment signed 8bit value (-128 to 127), positive values will request messages backwards in time while negative values forward
+//  is_message_id 0x0: interpret anchor as unix_timestamp (with 0 as MSB) to use as history origin
+//  is_message_id 0x1: interpret anchor as message_id     (with 0 as MSB) to use as history origin
+impl Serialize for GetHistoryPacket {
+    fn serialize(self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(17);
+        bytes.extend(self.channel_id.to_be_bytes());
+        bytes.extend(self.anchor.serialize());
+        bytes.extend(self.num_messages_back.to_be_bytes());
+        bytes
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct SendMessagePacket {
     pub channel_id: u64,
     pub reply_id: u64,
@@ -130,13 +171,6 @@ pub struct SendMediaPacket {
     pub filename: String,
     pub media_type: MediaType,
     pub media_data: Vec<u8>,
-}
-
-#[derive(Debug, Clone)]
-pub struct GetHistoryPacket {
-    pub channel_id: u64,
-    pub anchor: Anchor,
-    pub num_messages_back: i8,
 }
 
 #[derive(Debug, Clone)]

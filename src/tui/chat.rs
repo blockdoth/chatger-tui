@@ -19,6 +19,8 @@ impl From<Channel> for DisplayChannel {
         }
     }
 }
+
+#[derive(Debug)]
 pub struct ChatMessage {
     pub id: u64,
     pub author_name: String,
@@ -40,6 +42,7 @@ pub struct CurrentUser {
     pub name: String,
 }
 
+#[derive(Debug)]
 pub enum ChatMessageStatus {
     Sending,
     Send,

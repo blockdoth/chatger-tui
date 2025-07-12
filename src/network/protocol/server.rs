@@ -17,6 +17,7 @@ pub enum ServerPacketType {
     LoginAck = 0x01,
     ChannelList = 0x04,
     Channels = 0x05,
+    History = 0x06,
     UserStatuses = 0x07,
     Users = 0x08,
 }
@@ -28,6 +29,7 @@ impl Deserialize for ServerPacketType {
             0x01 => Ok((ServerPacketType::LoginAck, 1)),
             0x04 => Ok((ServerPacketType::ChannelList, 1)),
             0x05 => Ok((ServerPacketType::Channels, 1)),
+            0x06 => Ok((ServerPacketType::History, 1)),
             0x07 => Ok((ServerPacketType::UserStatuses, 1)),
             0x08 => Ok((ServerPacketType::Users, 1)),
             other => Err(anyhow!("Unknown ServerPacketType value: {}", other)),
@@ -43,6 +45,7 @@ pub enum ServerPayload {
     ChannelsList(ChannelsListPacket),
     UserStatuses(UserStatusesPacket),
     Users(UsersPacket),
+    History(HistoryPacket),
 }
 
 impl From<ServerPayload> for Payload {
@@ -99,7 +102,7 @@ impl ServerPayload {
 
                 let mut channels = Vec::with_capacity(channels_count);
 
-                let mut byte_index = 4;
+                let mut byte_index = 3;
                 for _ in 0..channels_count {
                     let (channel, read_bytes) = Channel::deserialize(&bytes[byte_index..])?;
                     channels.push(channel);
@@ -167,6 +170,31 @@ impl ServerPayload {
                 Ok(ServerPayload::Users(UsersPacket {
                     status,
                     users,
+                    error_message,
+                }))
+            }
+            ServerPacketType::History => {
+                let (status, _) = Status::deserialize(&bytes[0..1])?;
+                let message_count = u8::from_be_bytes(bytes[1..2].try_into()?) as usize;
+
+                let mut messages = Vec::with_capacity(message_count);
+
+                let mut byte_index = 2;
+                for _ in 0..message_count {
+                    let (user, read_bytes) = HistoryMessage::deserialize(&bytes[byte_index..])?;
+                    messages.push(user);
+                    byte_index += read_bytes;
+                }
+
+                let error_message = if status == Status::Failed {
+                    Some(String::deserialize(&bytes[1..])?.0)
+                } else {
+                    None
+                };
+
+                Ok(ServerPayload::History(HistoryPacket {
+                    status,
+                    messages,
                     error_message,
                 }))
             }

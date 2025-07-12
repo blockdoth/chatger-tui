@@ -3,6 +3,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
+use chrono::{DateTime, Utc};
 use clap::Error;
 use clap::builder::Str;
 use futures::lock;
@@ -15,7 +16,9 @@ use tokio::sync::{Mutex, oneshot};
 use tokio::task::JoinHandle;
 use tokio::time::{Duration, sleep};
 
-use crate::network::protocol::client::{ClientPacketType, ClientPayload, GetChannelsPacket, GetUsersPacket, LoginPacket, Serialize};
+use crate::network::protocol::client::{
+    Anchor, ClientPacketType, ClientPayload, GetChannelsPacket, GetHistoryPacket, GetUsersPacket, LoginPacket, Serialize,
+};
 use crate::network::protocol::header::{Header, PacketType};
 use crate::network::protocol::server::{Deserialize, HealthCheckPacket, HealthKind, ServerPacketType, ServerPayload, Status};
 use crate::tui::events::TuiEvent;
@@ -96,6 +99,21 @@ impl Client {
             &mut write_stream,
             ClientPacketType::Users,
             ClientPayload::Users(GetUsersPacket { user_ids }),
+        )
+        .await
+    }
+
+    pub async fn request_history_by_timestamp(&mut self, channel_id: u64, timestamp: DateTime<Utc>, num_messages_back: i8) -> Result<()> {
+        let mut write_stream = self.write_stream.as_mut().ok_or_else(|| anyhow!("Not connected to server"))?.lock().await;
+
+        Self::send_message(
+            &mut write_stream,
+            ClientPacketType::History,
+            ClientPayload::History(GetHistoryPacket {
+                channel_id,
+                anchor: Anchor::Timestamp(timestamp.timestamp() as u64),
+                num_messages_back,
+            }),
         )
         .await
     }
@@ -189,6 +207,14 @@ impl Client {
             ServerPayload::Users(packet) => match packet.status {
                 Status::Success => {
                     event_send.send(TuiEvent::Users(packet.users)).await?;
+                    Ok(())
+                }
+                Status::Failed => todo!(),
+                Status::Notification => panic!("todo"),
+            },
+            ServerPayload::History(packet) => match packet.status {
+                Status::Success => {
+                    event_send.send(TuiEvent::HistoryUpdate(packet.messages)).await?;
                     Ok(())
                 }
                 Status::Failed => todo!(),

@@ -237,7 +237,7 @@ impl Tui<TuiEvent> for State {
                 if let Some(user) = &self.current_user {
                     // command_send.send(Command::SendMessage(self.chat_input.clone())).await?;
                     let message = ChatMessage {
-                        id: None,
+                        message_id: None,
                         author_name: user.username.to_owned(),
                         author_id: user.id,
                         reply_id: 0, // TODO replies
@@ -379,7 +379,7 @@ impl Tui<TuiEvent> for State {
                     let timestamp = DateTime::from_timestamp(message.sent_timestamp as i64, 0).ok_or_else(|| anyhow!("Invalid timestamp"))?;
 
                     let display_message = ChatMessage {
-                        id: Some(message.message_id),
+                        message_id: Some(message.message_id),
                         reply_id: message.message_id,
                         author_name,
                         author_id: message.user_id,
@@ -392,23 +392,23 @@ impl Tui<TuiEvent> for State {
                     // TODO figure out what to do when we get message from channels we dont know the name off
                     let display_messages = self.chat_history.entry(channel_id).or_default();
 
-                    if !display_messages.iter().any(|m| m.id == display_message.id) {
+                    if !display_messages.iter().any(|m| m.message_id == display_message.message_id) {
                         debug!("inserting {display_message:?} into history of channel {channel_id}");
                         display_messages.push(display_message);
                     }
                 }
             }
             TuiEvent::MessageSendAck(message_id) => {
-                info!("{message_id}");
+                // Never passes because local display messages do not have an id yet
                 if let Some(message) = self
                     .chat_history
                     .iter_mut()
-                    .find_map(|(channel_id, messages)| messages.iter_mut().find(|m| m.id == Some(message_id)))
+                    .find_map(|(channel_id, messages)| messages.iter_mut().find(|m| m.message_id == Some(message_id)))
                 {
                     // Update the message status
                     message.status = ChatMessageStatus::Send;
                 } else {
-                    info!("Message with id {message_id} not found in chat history");
+                    debug!("Message with id {message_id} not found in chat history");
                 }
             }
 

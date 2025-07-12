@@ -22,7 +22,7 @@ impl From<Channel> for DisplayChannel {
 
 #[derive(Debug)]
 pub struct ChatMessage {
-    pub id: Option<u64>,
+    pub message_id: Option<u64>,
     pub author_name: String,
     pub author_id: u64,
     pub reply_id: u64,

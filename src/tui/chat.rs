@@ -1,13 +1,24 @@
 use chrono::{DateTime, NaiveDateTime, Utc};
 
+use crate::network::protocol::Channel;
+
 pub type ChannelId = u64;
 
-pub struct Channel {
+pub struct DisplayChannel {
     pub id: ChannelId,
     pub name: String,
     pub status: ChannelStatus,
 }
 
+impl From<Channel> for DisplayChannel {
+    fn from(channel: Channel) -> Self {
+        DisplayChannel {
+            id: channel.channel_id,
+            name: channel.name,
+            status: ChannelStatus::Read,
+        }
+    }
+}
 pub struct ChatMessage {
     pub id: u64,
     pub author_name: String,

@@ -16,13 +16,14 @@ use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::task::JoinHandle;
 
 use super::logs::LogEntry;
+use crate::network::client::Client;
 use crate::tui::logs;
 
 /// A configurable and generic runner that manages the entire lifecycle of a TUI application.
 /// It handles input events, log streaming, periodic ticks, and state updates.
-pub struct TuiRunner<T: Tui<Update, Command>, Update, Command> {
+pub struct TuiRunner<T: Tui<Update>, Update> {
     app: T,
-    command_send: Sender<Command>,
+    client: Client,
     update_recv: Receiver<Update>,
     update_send: Sender<Update>,
     log_send: Sender<LogEntry>,
@@ -36,10 +37,10 @@ const LOG_CHANNEL_CAPACITY: usize = 100;
 const EVENT_CHANNEL_CAPACITY: usize = 10;
 const EVENT_POLL_DELAY: u64 = 100;
 
-impl<T, U, C> TuiRunner<T, U, C>
+impl<T, U> TuiRunner<T, U>
 where
     U: FromLog + Send + 'static,
-    T: Tui<U, C>,
+    T: Tui<U>,
 {
     /// Creates a new `TuiRunner` with required communication channels and configuration.
     ///
@@ -49,12 +50,12 @@ where
     /// - `update_recv`: Channel to receive updates for the TUI.
     /// - `update_send`: Channel to send updates (e.g., from logs or external sources).
     /// - `log_level`: Logging level for filtering logs.
-    pub fn new(app: T, command_send: Sender<C>, update_recv: Receiver<U>, update_send: Sender<U>, log_level: LevelFilter) -> Self {
+    pub fn new(app: T, client: Client, update_recv: Receiver<U>, update_send: Sender<U>, log_level: LevelFilter) -> Self {
         let (log_send, log_recv) = mpsc::channel::<LogEntry>(LOG_CHANNEL_CAPACITY);
         let (event_send, event_recv) = mpsc::channel::<Event>(EVENT_CHANNEL_CAPACITY);
         Self {
             app,
-            command_send,
+            client,
             update_recv,
             update_send,
             log_send,
@@ -75,20 +76,14 @@ where
     ///
     /// # Returns
     /// A `Result` indicating success or any terminal-related errors.
-    pub async fn run<F>(mut self, tasks: Vec<F>) -> Result<()>
-    where
-        F: Future<Output = ()> + Send + 'static,
-    {
-        let log_handle = Self::init_log_handler_task(self.log_recv, self.update_send).await;
-
+    pub async fn run(mut self) -> Result<()> {
+        let log_handle = Self::init_log_handler_task(self.log_recv, self.update_send.clone()).await;
         let stop_flag = Arc::new(AtomicBool::new(false)); // TODO make more elegant
+
+        let update_send = self.update_send.clone();
+
         Self::init_event_handler_thread(self.event_send, stop_flag.clone()).await;
         logs::init_logger(self.log_level, self.log_send)?;
-
-        let mut handles: Vec<JoinHandle<()>> = vec![];
-        for task in tasks {
-            handles.push(tokio::spawn(task));
-        }
 
         let mut terminal = Self::setup_terminal()?;
         loop {
@@ -97,14 +92,14 @@ where
             tokio::select! {
 
               Some(event) = self.update_recv.recv() => {
-                  if let Err(e) = self.app.handle_event(event, &self.command_send).await {
+                  if let Err(e) = self.app.handle_event(event, &update_send, &mut self.client).await {
                       error!("Failed to handle update from update_recv: {e:?}");
                   }
               }
 
               Some(event) = self.event_recv.recv() => {
                   if let Some(update) = self.app.process_event(event)
-                    && let Err(e) = self.app.handle_event(update, &self.command_send).await {
+                    && let Err(e) = self.app.handle_event(update, &update_send, &mut self.client).await {
                     error!("Failed to handle update from keyboard: {e:?}");
                   }
 
@@ -123,9 +118,6 @@ where
             }
         }
         stop_flag.store(true, Ordering::Relaxed);
-        for handle in &handles {
-            handle.abort();
-        }
         log_handle.abort();
 
         Self::restore_terminal(&mut terminal)?;
@@ -191,7 +183,7 @@ where
 
 /// Trait that any TUI application must implement to work with `TuiRunner`.
 #[async_trait]
-pub trait Tui<E, C> {
+pub trait Tui<E> {
     /// Draws the UI using the current state. Should be purely visual with no side effects.
     fn draw_ui(&self, f: &mut Frame);
 
@@ -201,7 +193,7 @@ pub trait Tui<E, C> {
 
     /// Main update handler that reacts to updates from events, logs, or commands.
     /// This is where all state mutations should occur.
-    async fn handle_event(&mut self, event: E, command_send: &Sender<C>) -> Result<()>;
+    async fn handle_event(&mut self, event: E, event_send: &Sender<E>, client: &mut Client) -> Result<()>;
 
     /// Periodic tick handler that gets called every loop iteration.
     /// Suitable for lightweight background updates like animations or polling.

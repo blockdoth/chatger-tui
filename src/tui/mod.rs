@@ -15,8 +15,8 @@ use tokio::sync::mpsc::{self, Sender};
 use tokio::sync::watch::error;
 
 use crate::cli::{AppConfig, CliArgs};
-use crate::network::start_client;
-use crate::tui::chat::{Channel, ChannelId, ChannelStatus, ChatMessage, ChatMessageStatus, CurrentUser, User};
+use crate::network::client::{self, Client};
+use crate::tui::chat::{ChannelId, ChannelStatus, ChatMessage, ChatMessageStatus, CurrentUser, DisplayChannel, User};
 use crate::tui::events::TuiEvent;
 use crate::tui::framework::{FromLog, Tui, TuiRunner};
 use crate::tui::logs::LogEntry;
@@ -25,6 +25,7 @@ use crate::tui::ui::draw;
 pub struct UserProfile {
     id: u64,
     name: String,
+    password: String,
     is_logged_in: bool,
 }
 
@@ -37,15 +38,10 @@ pub enum Focus {
     Logs,
 }
 
-#[derive(Debug)]
-pub enum Command {
-    SendMessage(String),
-}
-
 pub struct State {
     should_quit: bool,
     logs: Vec<LogEntry>,
-    channels: Vec<Channel>,
+    channels: Vec<DisplayChannel>,
     users: Vec<User>,
     chat_history: HashMap<ChannelId, Vec<ChatMessage>>,
     chat_input: String,
@@ -106,17 +102,17 @@ impl State {
             focus: Focus::Channels,
             current_user: None,
             channels: vec![
-                Channel {
+                DisplayChannel {
                     id: 0,
                     name: "Balls".to_owned(),
                     status: ChannelStatus::Read,
                 },
-                Channel {
+                DisplayChannel {
                     id: 1,
                     name: "penger pics".to_owned(),
                     status: ChannelStatus::Unread,
                 },
-                Channel {
+                DisplayChannel {
                     id: 2,
                     name: "capi".to_owned(),
                     status: ChannelStatus::Muted,
@@ -146,7 +142,7 @@ impl State {
 }
 
 #[async_trait]
-impl Tui<TuiEvent, Command> for State {
+impl Tui<TuiEvent> for State {
     /// Draws the UI layout and content.
     fn draw_ui(&self, frame: &mut Frame) {
         draw(self, frame);
@@ -211,7 +207,7 @@ impl Tui<TuiEvent, Command> for State {
         }
     }
 
-    async fn handle_event(&mut self, event: TuiEvent, command_send: &Sender<Command>) -> Result<()> {
+    async fn handle_event(&mut self, event: TuiEvent, event_send: &Sender<TuiEvent>, client: &mut Client) -> Result<()> {
         match event {
             TuiEvent::Exit => self.should_quit = true,
             TuiEvent::ToggleLogs => {
@@ -290,7 +286,7 @@ impl Tui<TuiEvent, Command> for State {
             }
             TuiEvent::InputEnter if self.chat_input.len() > 1 => {
                 if let Some(user) = &self.current_user {
-                    command_send.send(Command::SendMessage(self.chat_input.clone())).await?;
+                    // command_send.send(Command::SendMessage(self.chat_input.clone())).await?;
                     let message = ChatMessage {
                         id: 0,
                         author_name: user.name.to_owned(),
@@ -335,21 +331,37 @@ impl Tui<TuiEvent, Command> for State {
                     self.focus = Focus::ChatInput(i + 1)
                 }
             }
-            TuiEvent::SetUserName(name) => {
+            TuiEvent::SetUserNamePassword(name, password) => {
                 self.current_user = Some(UserProfile {
                     id: 0,
                     name,
+                    password,
                     is_logged_in: false,
                 })
+            }
+            TuiEvent::ConnectAndLogin(address, username, password) => {
+                client.connect(address).await?;
+                client.login(username.clone(), password.clone()).await?;
+                event_send.send(TuiEvent::SetUserNamePassword(username, password)).await;
             }
             TuiEvent::LoggedIn => {
                 if let Some(user) = &mut self.current_user {
                     user.is_logged_in = true;
+                    client.request_channel_ids().await?;
+                }
+            }
+            TuiEvent::ChannelIDs(channel_ids) => {
+                if !channel_ids.is_empty() {
+                    info!("received channel ids {channel_ids:?}");
+                    client.request_channels(channel_ids).await?
                 }
             }
             TuiEvent::HealthCheck => self.last_healthcheck = Utc::now(),
             TuiEvent::Channels(channels) => {
-                info!("{channels:?}")
+                info!("{channels:?}");
+                for channel in channels {
+                    self.channels.push(channel.into());
+                }
             }
             TuiEvent::ChannelIDs(channel_ids) => {
                 info!("{channel_ids:?}")
@@ -370,17 +382,17 @@ impl Tui<TuiEvent, Command> for State {
     }
 }
 
-pub async fn run(args: AppConfig) -> Result<()> {
-    let (command_send, command_recv) = mpsc::channel::<Command>(10);
+pub async fn run(config: AppConfig) -> Result<()> {
     let (event_send, event_recv) = mpsc::channel::<TuiEvent>(10);
 
-    let update_send_clone = event_send.clone();
+    let mut client = Client::new(event_send.clone());
 
-    // Showcases messages going both ways
-    let other_task = vec![start_client(event_send.clone(), args.address, args.username, args.password)];
+    let username = config.username.clone();
+    let password = config.password.clone();
+    event_send.send(TuiEvent::ConnectAndLogin(config.address, username, password)).await?;
 
     let tui = State::new();
-    let tui_runner = TuiRunner::new(tui, command_send, event_recv, event_send, args.loglevel);
+    let tui_runner = TuiRunner::new(tui, client, event_recv, event_send, config.loglevel);
 
-    tui_runner.run(other_task).await
+    tui_runner.run().await
 }

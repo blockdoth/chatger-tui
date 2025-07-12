@@ -1,3 +1,5 @@
+use std::net::SocketAddr;
+
 use crate::network::protocol::Channel;
 use crate::tui::Focus;
 use crate::tui::framework::FromLog;
@@ -20,12 +22,13 @@ pub enum TuiEvent {
     ToggleLogs,
     LoggedIn,
     HealthCheck,
-    SetUserName(String),
+    SetUserNamePassword(String, String),
     Disconnected,
     Channels(Vec<Channel>),
     ChannelIDs(Vec<u64>),
     ScrollUp,
     ScrollDown,
+    ConnectAndLogin(SocketAddr, String, String),
 }
 
 impl FromLog for TuiEvent {

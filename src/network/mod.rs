@@ -14,23 +14,3 @@ use tokio::task::JoinHandle;
 
 use crate::network::client::Client;
 use crate::tui::events::TuiEvent;
-
-pub async fn start_client(event_send: Sender<TuiEvent>, address: SocketAddr, username: String, password: String) {
-    info!("Starting client with args: {address} {username} {password}");
-
-    let mut client = Client::new(event_send.clone());
-
-    if let Err(e) = client.connect(address).await {
-        error!("Failed to connect {e}");
-    }
-
-    if let Err(e) = client.login(username.clone(), password).await {
-        error!("Failed to login {e}");
-    }
-
-    client.request_channel_ids().await;
-    // client.request_channels(vec![10, 11]).await;
-    event_send.send(TuiEvent::SetUserName(username)).await;
-
-    let polling_interval = 1;
-}

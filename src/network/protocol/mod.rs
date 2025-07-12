@@ -1,4 +1,5 @@
 use anyhow::Result;
+use log::info;
 
 use crate::network::protocol::server::Deserialize;
 pub mod client;
@@ -61,18 +62,11 @@ pub struct Channel {
 impl Deserialize for Channel {
     fn deserialize(bytes: &[u8]) -> Result<(Self, usize)> {
         let channel_id = u64::from_be_bytes(bytes[0..8].try_into()?);
-        let name_len = u8::from_be_bytes(bytes[8..9].try_into()?) as usize;
-        let name = String::from_utf8(bytes[8..name_len].to_vec())?;
+        let name_len: usize = u8::from_be_bytes(bytes[7..8].try_into()?) as usize;
+        let name = String::from_utf8(bytes[8..8 + name_len].to_vec())?;
         let icon_id_start = 8 + name_len + 1;
         let icon_id = u64::from_be_bytes(bytes[icon_id_start..icon_id_start + 8].try_into()?);
 
-        Ok((
-            Channel {
-                channel_id,
-                name: todo!(),
-                icon_id: todo!(),
-            },
-            icon_id_start + 8,
-        ))
+        Ok((Channel { channel_id, name, icon_id }, icon_id_start + 8))
     }
 }

@@ -68,7 +68,7 @@ impl ServerPayload {
                 let (status, _) = Status::deserialize(&bytes[0..1])?;
                 let channels_count = u16::from_be_bytes(bytes[1..3].try_into()?) as usize;
 
-                let mut byte_index = 4;
+                let mut byte_index = 3;
                 let mut channel_ids = Vec::with_capacity(channels_count);
                 for _ in 0..channels_count {
                     let channel_id = u64::from_be_bytes(bytes[byte_index..byte_index + 8].try_into()?);

@@ -4,6 +4,7 @@ use std::default;
 use std::fmt::format;
 
 use chrono::{Duration, Utc};
+use futures::channel;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -11,7 +12,8 @@ use ratatui::symbols::{border, line};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Padding, Paragraph, Wrap};
 
-use crate::tui::chat::{ChannelStatus, ChatMessageStatus, UserStatus};
+use crate::network::protocol::UserStatus;
+use crate::tui::chat::{ChannelStatus, ChatMessageStatus};
 use crate::tui::ui::borders::{
     borders_channel, borders_chat_history, borders_input, borders_logs, borders_profile, borders_server_status, borders_users,
 };
@@ -165,7 +167,7 @@ fn render_channels(state: &State, frame: &mut Frame, area: Rect) {
 fn render_profile(state: &State, frame: &mut Frame, area: Rect) {
     let (borders, border_style, border_corners) = borders_profile(state);
     let current_user = if let Some(user) = &state.current_user {
-        let username = format!("user: {}", user.name.clone());
+        let username = format!("user: {}", user.username.clone());
         if user.is_logged_in {
             Span::styled(username, Style::default().fg(Color::Green))
         } else {
@@ -218,58 +220,68 @@ fn render_chat_history(state: &State, frame: &mut Frame, area: Rect) {
 
     // TODO make less ugly
     let empty = &vec![];
-    let chat_log = state
-        .chat_history
-        .get(&state.channels.get(state.active_channel_idx).unwrap().id)
-        .unwrap_or(empty);
 
-    let current_message_line_count = chat_log.len();
+    let chatlog_lines: Vec<Line> = if state.chat_history.is_empty() {
+        vec![Line::from(Span::raw(""))]
+    } else {
+        let channel_id = if let Some(channel) = &state.channels.get(state.active_channel_idx) {
+            channel.id
+        } else {
+            0
+        };
 
-    let start_index = current_message_line_count
-        .saturating_sub(area.height.saturating_sub(2) as usize)
-        .saturating_sub(state.chat_scroll_offset);
+        let chat_log = state.chat_history.get(&channel_id).unwrap_or(empty);
 
-    let chatlog_lines: Vec<Line> = chat_log
-        .iter()
-        .skip(start_index)
-        .flat_map(|chat_message| {
-            let timestamp = chat_message.timestamp.format("%H:%M:%S").to_string();
+        let current_message_line_count = chat_log.len();
 
-            let header_style = match chat_message.status {
-                ChatMessageStatus::Send => Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
-                ChatMessageStatus::Sending => Style::default().fg(Color::Yellow).add_modifier(Modifier::DIM | Modifier::ITALIC),
-                ChatMessageStatus::FailedToSend => Style::default().fg(Color::LightRed).add_modifier(Modifier::DIM | Modifier::ITALIC),
-            };
+        let start_index = current_message_line_count
+            .saturating_sub(area.height.saturating_sub(2) as usize)
+            .saturating_sub(state.chat_scroll_offset);
 
-            let body_style = match chat_message.status {
-                ChatMessageStatus::Send => Style::default().fg(Color::Gray),
-                ChatMessageStatus::Sending => Style::default().fg(Color::Gray).add_modifier(Modifier::DIM | Modifier::ITALIC),
-                ChatMessageStatus::FailedToSend => Style::default().fg(Color::LightRed).add_modifier(Modifier::DIM | Modifier::ITALIC),
-            };
+        chat_log
+            .iter()
+            .skip(start_index)
+            .flat_map(|chat_message| {
+                let timestamp = chat_message.timestamp.format("%H:%M:%S").to_string();
 
-            let timestamp_style = match chat_message.status {
-                ChatMessageStatus::Send => Style::default().fg(Color::DarkGray),
-                ChatMessageStatus::Sending | ChatMessageStatus::FailedToSend => Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
-            };
+                let header_style = match chat_message.status {
+                    ChatMessageStatus::Send => Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                    ChatMessageStatus::Sending => Style::default().fg(Color::Yellow).add_modifier(Modifier::DIM | Modifier::ITALIC),
+                    ChatMessageStatus::FailedToSend => Style::default().fg(Color::LightRed).add_modifier(Modifier::DIM | Modifier::ITALIC),
+                };
 
-            let header = Line::from(vec![
-                Span::styled(format!("{} ", &chat_message.author_name), header_style),
-                Span::styled(format!(" [{timestamp}] "), timestamp_style),
-                (match chat_message.status {
-                    ChatMessageStatus::Send => Span::raw(""),
-                    ChatMessageStatus::Sending => Span::styled("sending...", Style::default().add_modifier(Modifier::DIM | Modifier::ITALIC)),
-                    ChatMessageStatus::FailedToSend => Span::styled(
-                        "failed to send",
-                        Style::default().fg(Color::LightRed).add_modifier(Modifier::DIM | Modifier::ITALIC),
-                    ),
-                }),
-            ]);
+                let body_style = match chat_message.status {
+                    ChatMessageStatus::Send => Style::default().fg(Color::Gray),
+                    ChatMessageStatus::Sending => Style::default().fg(Color::Gray).add_modifier(Modifier::DIM | Modifier::ITALIC),
+                    ChatMessageStatus::FailedToSend => Style::default().fg(Color::LightRed).add_modifier(Modifier::DIM | Modifier::ITALIC),
+                };
 
-            let body = Line::from(Span::styled(format!("\t{}", &chat_message.message), body_style));
+                let timestamp_style = match chat_message.status {
+                    ChatMessageStatus::Send => Style::default().fg(Color::DarkGray),
+                    ChatMessageStatus::Sending | ChatMessageStatus::FailedToSend => {
+                        Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC)
+                    }
+                };
 
-            vec![header, body].into_iter()
-        })
-        .collect();
+                let header = Line::from(vec![
+                    Span::styled(format!("{} ", &chat_message.author_name), header_style),
+                    Span::styled(format!(" [{timestamp}] "), timestamp_style),
+                    (match chat_message.status {
+                        ChatMessageStatus::Send => Span::raw(""),
+                        ChatMessageStatus::Sending => Span::styled("sending...", Style::default().add_modifier(Modifier::DIM | Modifier::ITALIC)),
+                        ChatMessageStatus::FailedToSend => Span::styled(
+                            "failed to send",
+                            Style::default().fg(Color::LightRed).add_modifier(Modifier::DIM | Modifier::ITALIC),
+                        ),
+                    }),
+                ]);
+
+                let body = Line::from(Span::styled(format!("\t{}", &chat_message.message), body_style));
+
+                vec![header, body].into_iter()
+            })
+            .collect()
+    };
 
     let (borders, border_style, border_corners) = borders_chat_history(state);
 
@@ -308,10 +320,16 @@ fn render_chat_input(state: &State, frame: &mut Frame, area: Rect) {
                 }
             })
             .collect(),
-        _ => vec![Span::styled(
-            format!("Message #{}", state.channels.get(state.active_channel_idx).unwrap().name),
-            Style::default().add_modifier(Modifier::DIM | Modifier::ITALIC),
-        )],
+        _ => {
+            if let Some(channel) = state.channels.get(state.active_channel_idx) {
+                vec![Span::styled(
+                    format!("Message #{}", channel.name),
+                    Style::default().add_modifier(Modifier::DIM | Modifier::ITALIC),
+                )]
+            } else {
+                vec![]
+            }
+        }
     };
     let input_line = vec![Line::from(Span::from("")), Line::from(input_text)];
 
@@ -327,29 +345,35 @@ fn render_chat_input(state: &State, frame: &mut Frame, area: Rect) {
 }
 
 fn render_users(state: &State, frame: &mut Frame, area: Rect) {
-    let online: Vec<Line> = state
+    let lines: Vec<Line> = state
         .users
         .iter()
-        .filter(|user| user.status == UserStatus::Online)
-        .map(|user| Line::from(format!(" {}", user.name)))
-        .collect();
-    let mut lines: Vec<Line> = vec![Line::from(Span::styled(
-        format!("Online - {}", online.len()),
-        Style::default().add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
-    ))];
-    lines.extend(online);
+        .filter(|user| {
+            if let Some(current_user) = &state.current_user {
+                current_user.username != user.name
+            } else {
+                true
+            }
+        })
+        .map(|user| {
+            let (symbol, symbol_style) = match user.status {
+                UserStatus::Offline => ("●", Style::default().fg(Color::Gray).add_modifier(Modifier::DIM)),
+                UserStatus::Online => ("●", Style::default().fg(Color::Green)),
+                UserStatus::Idle => ("●", Style::default().fg(Color::Yellow)),
+                UserStatus::DoNotDisturb => ("●", Style::default().fg(Color::Red)),
+            };
+            let name_style = if let UserStatus::Offline = user.status {
+                Style::default().fg(Color::Gray).add_modifier(Modifier::DIM)
+            } else {
+                Style::default()
+            };
 
-    let offline: Vec<Line> = state
-        .users
-        .iter()
-        .filter(|user| user.status == UserStatus::Offline)
-        .map(|user| Line::from(Span::styled(format!(" {}", user.name), Style::default().add_modifier(Modifier::DIM))))
+            Line::from(vec![
+                Span::styled(format!("{symbol} "), symbol_style),
+                Span::styled(user.name.clone(), name_style),
+            ])
+        })
         .collect();
-    lines.push(Line::from(Span::styled(
-        format!("Offline - {}", offline.len()),
-        Style::default().add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
-    )));
-    lines.extend(offline);
 
     let border_corners = border::Set {
         bottom_left: line::NORMAL.horizontal_up,

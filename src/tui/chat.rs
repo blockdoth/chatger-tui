@@ -1,6 +1,6 @@
 use chrono::{DateTime, NaiveDateTime, Utc};
 
-use crate::network::protocol::Channel;
+use crate::network::protocol::{Channel, UserStatus};
 
 pub type ChannelId = u64;
 
@@ -49,9 +49,4 @@ pub enum ChannelStatus {
     Read,
     Unread,
     Muted,
-}
-#[derive(PartialEq, Debug, Clone)]
-pub enum UserStatus {
-    Online,
-    Offline,
 }

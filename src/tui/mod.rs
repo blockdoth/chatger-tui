@@ -4,18 +4,22 @@ pub mod framework;
 pub mod logs;
 pub mod ui;
 use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::time::Duration;
 
 use anyhow::{Ok, Result};
 use async_trait::async_trait;
-use chrono::{DateTime, Days, Duration, Utc};
+use chrono::{DateTime, Days, Utc};
 use crossterm::event::{Event, KeyCode, KeyModifiers};
-use log::info;
+use log::{debug, error, info};
 use ratatui::Frame;
 use tokio::sync::mpsc::{self, Sender};
 use tokio::sync::watch::error;
+use tokio::time::sleep;
 
 use crate::cli::{AppConfig, CliArgs};
 use crate::network::client::{self, Client};
+use crate::network::protocol::UserStatus;
 use crate::tui::chat::{ChannelId, ChannelStatus, ChatMessage, ChatMessageStatus, CurrentUser, DisplayChannel, User};
 use crate::tui::events::TuiEvent;
 use crate::tui::framework::{FromLog, Tui, TuiRunner};
@@ -24,7 +28,7 @@ use crate::tui::ui::draw;
 
 pub struct UserProfile {
     id: u64,
-    name: String,
+    username: String,
     password: String,
     is_logged_in: bool,
 }
@@ -36,6 +40,14 @@ pub enum Focus {
     ChatInput(usize),
     Users,
     Logs,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ServerState {
+    Connected,
+    Unhealhty,
+    Disconnected,
+    Reconnecting,
 }
 
 pub struct State {
@@ -52,45 +64,12 @@ pub struct State {
     show_logs: bool,
     log_scroll_offset: usize,
     chat_scroll_offset: usize,
+    server_address: Option<SocketAddr>,
+    server_connection_state: ServerState,
 }
 
 impl State {
     pub fn new() -> Self {
-        let mut chatlogs = HashMap::new();
-        chatlogs.insert(0, vec![
-              ChatMessage {
-                id: 1,
-                author_id: 1,
-                author_name: "ballman 1".to_owned(),
-                timestamp: Utc::now(),
-                message: "balls".to_owned(),
-                status: ChatMessageStatus::Send,
-              },
-              ChatMessage {
-                id: 2,
-                author_id: 2,
-                author_name: "ballman 2".to_owned(),
-                timestamp: Utc::now(),
-                message: "also balls".to_owned(),
-                status: ChatMessageStatus::Send,
-              },
-              ChatMessage {
-                id: 3,
-                author_id: 3,
-                author_name: "ballman 3".to_owned(),
-                timestamp: Utc::now(),
-                message: "more balls".to_owned(),
-                status: ChatMessageStatus::FailedToSend,
-              },
-              ChatMessage {
-                id: 4,
-                author_id: 4,
-                author_name: "ballman 4".to_owned(),
-                timestamp: Utc::now(),
-                message: "What the fuck did you just fucking say about me, you little bitch? I'll have you know I graduated top of my class in the Navy Seals, and I've been involved in numerous secret raids on Al-Quaeda, and I have over 300 confirmed kills. I am trained in gorilla warfare and I'm the top sniper in the entire ".to_owned(),
-                status: ChatMessageStatus::Sending,
-            }]);
-
         State {
             should_quit: false,
             last_healthcheck: Utc::now().checked_sub_days(Days::new(1)).unwrap(),
@@ -99,43 +78,13 @@ impl State {
             chat_scroll_offset: 0,
             logs: vec![],
             active_channel_idx: 0,
+            server_connection_state: ServerState::Disconnected,
+            server_address: None,
             focus: Focus::Channels,
             current_user: None,
-            channels: vec![
-                DisplayChannel {
-                    id: 0,
-                    name: "Balls".to_owned(),
-                    status: ChannelStatus::Read,
-                },
-                DisplayChannel {
-                    id: 1,
-                    name: "penger pics".to_owned(),
-                    status: ChannelStatus::Unread,
-                },
-                DisplayChannel {
-                    id: 2,
-                    name: "capi".to_owned(),
-                    status: ChannelStatus::Muted,
-                },
-            ],
-            users: vec![
-                User {
-                    id: 1,
-                    name: "ballman 1".to_owned(),
-                    status: chat::UserStatus::Online,
-                },
-                User {
-                    id: 2,
-                    name: "ballman 2".to_owned(),
-                    status: chat::UserStatus::Offline,
-                },
-                User {
-                    id: 3,
-                    name: "ballman 3".to_owned(),
-                    status: chat::UserStatus::Online,
-                },
-            ],
-            chat_history: chatlogs,
+            channels: vec![],
+            users: vec![],
+            chat_history: HashMap::new(),
             chat_input: " ".to_owned(),
         }
     }
@@ -289,7 +238,7 @@ impl Tui<TuiEvent> for State {
                     // command_send.send(Command::SendMessage(self.chat_input.clone())).await?;
                     let message = ChatMessage {
                         id: 0,
-                        author_name: user.name.to_owned(),
+                        author_name: user.username.to_owned(),
                         author_id: user.id,
                         timestamp: Utc::now(),
                         message: self.chat_input.clone(),
@@ -331,10 +280,10 @@ impl Tui<TuiEvent> for State {
                     self.focus = Focus::ChatInput(i + 1)
                 }
             }
-            TuiEvent::SetUserNamePassword(name, password) => {
+            TuiEvent::SetUserNamePassword(username, password) => {
                 self.current_user = Some(UserProfile {
                     id: 0,
-                    name,
+                    username,
                     password,
                     is_logged_in: false,
                 })
@@ -342,32 +291,90 @@ impl Tui<TuiEvent> for State {
             TuiEvent::ConnectAndLogin(address, username, password) => {
                 client.connect(address).await?;
                 client.login(username.clone(), password.clone()).await?;
+                self.server_connection_state = ServerState::Connected;
                 event_send.send(TuiEvent::SetUserNamePassword(username, password)).await;
+                self.server_address = Some(address);
             }
             TuiEvent::LoggedIn => {
                 if let Some(user) = &mut self.current_user {
                     user.is_logged_in = true;
                     client.request_channel_ids().await?;
+                    client.request_user_statuses().await?;
                 }
             }
             TuiEvent::ChannelIDs(channel_ids) => {
                 if !channel_ids.is_empty() {
-                    info!("received channel ids {channel_ids:?}");
+                    debug!("received channel ids {channel_ids:?}");
                     client.request_channels(channel_ids).await?
                 }
             }
-            TuiEvent::HealthCheck => self.last_healthcheck = Utc::now(),
+            TuiEvent::HealthCheck => {
+                self.last_healthcheck = Utc::now();
+                client.request_user_statuses().await?;
+            }
+
             TuiEvent::Channels(channels) => {
-                info!("{channels:?}");
+                debug!("recieved {channels:?}");
                 for channel in channels {
                     self.channels.push(channel.into());
                 }
             }
-            TuiEvent::ChannelIDs(channel_ids) => {
-                info!("{channel_ids:?}")
+            TuiEvent::UserStatusesUpdate(status_updates) => {
+                // TODO what happens if a new user comes online? We dont get their name
+                debug!("received statuses{status_updates:?}");
+
+                let mut users_not_found = vec![];
+                'outer: for status_update in status_updates {
+                    for user in &mut self.users {
+                        if user.id == status_update.0 {
+                            user.status = status_update.1.clone();
+                            continue 'outer;
+                        }
+                    }
+                    // User not found in current users
+                    users_not_found.push(status_update.0);
+                }
+                if !users_not_found.is_empty() {
+                    debug!("New users added, requesting names of users ids {users_not_found:?}");
+                    client.request_users(users_not_found).await;
+                }
             }
+            TuiEvent::Users(users) => {
+                let mut new_users: Vec<User> = users
+                    .iter()
+                    .map(|user| User {
+                        id: user.user_id,
+                        name: user.username.clone(),
+                        status: user.status.clone(),
+                    })
+                    .collect();
+
+                let mut new_users_map: HashMap<u64, User> = new_users.drain(..).map(|user| (user.id, user)).collect();
+
+                // Update existing users
+                for user in &mut self.users {
+                    if let Some(new_user) = new_users_map.remove(&user.id) {
+                        user.status = new_user.status;
+                    }
+                }
+                self.users.extend(new_users_map.into_values());
+            }
+
             TuiEvent::Disconnected => {
-                info!("TODO reconnect logic");
+                self.server_connection_state = ServerState::Disconnected;
+                error!("TOOD reconnect logic");
+
+                // TOOD reconnect logic
+
+                // loop {
+                //   if let Some(address) = self.server_address && let Some(UserProfile{username, password, .. }) = &self.current_user {
+                //     if self.server_connection_state != ServerState::Reconnecting {
+                //       self.server_connection_state = ServerState::Reconnecting;
+                //       event_send.send(TuiEvent::ConnectAndLogin(address, username.clone(), password.clone())).await;
+                //     }
+                //   }
+                //   sleep(Duration::from_secs(5)).await;
+                // }
             }
         }
         Ok(())
@@ -391,8 +398,10 @@ pub async fn run(config: AppConfig) -> Result<()> {
     let password = config.password.clone();
     event_send.send(TuiEvent::ConnectAndLogin(config.address, username, password)).await?;
 
+    let tasks = vec![async move {}];
+
     let tui = State::new();
     let tui_runner = TuiRunner::new(tui, client, event_recv, event_send, config.loglevel);
 
-    tui_runner.run().await
+    tui_runner.run(tasks).await
 }

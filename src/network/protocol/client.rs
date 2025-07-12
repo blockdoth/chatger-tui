@@ -1,8 +1,9 @@
 use anyhow::{Result, anyhow};
+use log::info;
 
 use crate::network::client::MAX_MESSAGE_LENGTH;
 use crate::network::protocol::header::Payload;
-use crate::network::protocol::server::{HealthCheckPacket, HealthKind};
+use crate::network::protocol::server::{HealthCheckPacket, HealthKind, UsersPacket};
 use crate::network::protocol::{Anchor, MediaType, UserStatus};
 
 pub trait Serialize {
@@ -14,8 +15,10 @@ pub trait Serialize {
 pub enum ClientPacketType {
     Healthcheck = 0x80,
     Login = 0x81,
-    ChannelsIDs = 0x84,
+    ChannelsList = 0x84,
     Channels = 0x85,
+    UserStatuses = 0x87,
+    Users = 0x88,
 }
 
 impl Serialize for ClientPacketType {
@@ -30,6 +33,8 @@ pub enum ClientPayload {
     Health(HealthCheckPacket), // Send(SendMediaPacket),
     Channels(GetChannelsPacket),
     ChannelsList,
+    UserStatuses,
+    Users(GetUsersPacket),
 }
 impl From<ClientPayload> for Payload {
     fn from(payload: ClientPayload) -> Self {
@@ -44,6 +49,8 @@ impl Serialize for ClientPayload {
             ClientPayload::Health(packet) => packet.serialize(),
             ClientPayload::Channels(packet) => packet.serialize(),
             ClientPayload::ChannelsList => vec![],
+            ClientPayload::UserStatuses => vec![],
+            ClientPayload::Users(packet) => packet.serialize(),
         }
     }
 }
@@ -94,6 +101,23 @@ impl Serialize for GetChannelsPacket {
 }
 
 #[derive(Debug, Clone)]
+pub struct GetUsersPacket {
+    pub user_ids: Vec<u64>,
+}
+
+impl Serialize for GetUsersPacket {
+    fn serialize(self) -> Vec<u8> {
+        let user_count = self.user_ids.len();
+        let mut bytes = Vec::with_capacity(user_count * 8 + 2);
+        bytes.extend((user_count as u8).to_be_bytes());
+        for user_id in self.user_ids {
+            bytes.extend_from_slice(&user_id.to_be_bytes());
+        }
+        bytes
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct SendMessagePacket {
     pub channel_id: u64,
     pub reply_id: u64,
@@ -113,11 +137,6 @@ pub struct GetHistoryPacket {
     pub channel_id: u64,
     pub anchor: Anchor,
     pub num_messages_back: i8,
-}
-
-#[derive(Debug, Clone)]
-pub struct GetUsersPacket {
-    pub user_ids: Vec<u64>,
 }
 
 #[derive(Debug, Clone)]

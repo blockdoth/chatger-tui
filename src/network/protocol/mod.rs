@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Ok, Result, anyhow};
 use log::info;
 
 use crate::network::protocol::server::Deserialize;
@@ -17,12 +17,25 @@ pub enum MediaType {
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum UserStatus {
     Offline = 0x00,
     Online = 0x01,
     Idle = 0x02,
     DoNotDisturb = 0x03,
+}
+
+//[channel_id1|8][name_len|1][channel_name][icon_id|8]
+impl Deserialize for UserStatus {
+    fn deserialize(bytes: &[u8]) -> Result<(Self, usize)> {
+        match bytes[0] {
+            0x00 => Ok((UserStatus::Offline, 1)),
+            0x01 => Ok((UserStatus::Online, 1)),
+            0x02 => Ok((UserStatus::Idle, 1)),
+            0x03 => Ok((UserStatus::DoNotDisturb, 1)),
+            other => Err(anyhow!("Unknown UserStatus value: {}", other)),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -38,6 +51,39 @@ pub struct UserData {
     pub username: String,
     pub pfp_id: u64,
     pub bio: String,
+}
+
+// [user_id1|8][status_id|1][username_length|1][username][pfp_id|8][bio_length|2][bio]
+impl Deserialize for UserData {
+    fn deserialize(bytes: &[u8]) -> Result<(Self, usize)> {
+        let user_id = u64::from_be_bytes(bytes[0..8].try_into()?);
+        let (status, _) = UserStatus::deserialize(&bytes[8..9])?;
+
+        let username_length = u8::from_be_bytes(bytes[9..10].try_into()?) as usize;
+        let username = String::from_utf8(bytes[10..10 + username_length].to_vec())?;
+
+        let mut byte_index = 10 + username_length;
+
+        let pfp_id = u64::from_be_bytes(bytes[byte_index..byte_index + 8].try_into()?);
+        byte_index += 8;
+
+        let bio_length = u16::from_be_bytes(bytes[byte_index..byte_index + 2].try_into()?) as usize;
+        byte_index += 2;
+
+        let bio = String::from_utf8(bytes[byte_index..byte_index + bio_length].to_vec())?;
+        byte_index += bio_length;
+
+        Ok((
+            UserData {
+                user_id,
+                status,
+                username,
+                pfp_id,
+                bio,
+            },
+            byte_index,
+        ))
+    }
 }
 
 #[derive(Debug, Clone)]

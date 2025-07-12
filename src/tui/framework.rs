@@ -76,7 +76,10 @@ where
     ///
     /// # Returns
     /// A `Result` indicating success or any terminal-related errors.
-    pub async fn run(mut self) -> Result<()> {
+    pub async fn run<F>(mut self, tasks: Vec<F>) -> Result<()>
+    where
+        F: Future<Output = ()> + Send + 'static,
+    {
         let log_handle = Self::init_log_handler_task(self.log_recv, self.update_send.clone()).await;
         let stop_flag = Arc::new(AtomicBool::new(false)); // TODO make more elegant
 
@@ -84,6 +87,11 @@ where
 
         Self::init_event_handler_thread(self.event_send, stop_flag.clone()).await;
         logs::init_logger(self.log_level, self.log_send)?;
+
+        let mut handles: Vec<JoinHandle<()>> = vec![];
+        for task in tasks {
+            handles.push(tokio::spawn(task));
+        }
 
         let mut terminal = Self::setup_terminal()?;
         loop {
@@ -118,6 +126,9 @@ where
             }
         }
         stop_flag.store(true, Ordering::Relaxed);
+        for handle in &handles {
+            handle.abort();
+        }
         log_handle.abort();
 
         Self::restore_terminal(&mut terminal)?;

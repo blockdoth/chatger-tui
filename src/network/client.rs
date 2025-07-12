@@ -15,7 +15,7 @@ use tokio::sync::{Mutex, oneshot};
 use tokio::task::JoinHandle;
 use tokio::time::{Duration, sleep};
 
-use crate::network::protocol::client::{ClientPacketType, ClientPayload, GetChannelsPacket, LoginPacket, Serialize};
+use crate::network::protocol::client::{ClientPacketType, ClientPayload, GetChannelsPacket, GetUsersPacket, LoginPacket, Serialize};
 use crate::network::protocol::header::{Header, PacketType};
 use crate::network::protocol::server::{Deserialize, HealthCheckPacket, HealthKind, ServerPacketType, ServerPayload, Status};
 use crate::tui::events::TuiEvent;
@@ -80,7 +80,24 @@ impl Client {
     pub async fn request_channel_ids(&mut self) -> Result<()> {
         let mut write_stream = self.write_stream.as_mut().ok_or_else(|| anyhow!("Not connected to server"))?.lock().await;
 
-        Self::send_message(&mut write_stream, ClientPacketType::ChannelsIDs, ClientPayload::ChannelsList).await
+        Self::send_message(&mut write_stream, ClientPacketType::ChannelsList, ClientPayload::ChannelsList).await
+    }
+
+    pub async fn request_user_statuses(&mut self) -> Result<()> {
+        let mut write_stream = self.write_stream.as_mut().ok_or_else(|| anyhow!("Not connected to server"))?.lock().await;
+
+        Self::send_message(&mut write_stream, ClientPacketType::UserStatuses, ClientPayload::UserStatuses).await
+    }
+
+    pub async fn request_users(&mut self, user_ids: Vec<u64>) -> Result<()> {
+        let mut write_stream = self.write_stream.as_mut().ok_or_else(|| anyhow!("Not connected to server"))?.lock().await;
+
+        Self::send_message(
+            &mut write_stream,
+            ClientPacketType::Users,
+            ClientPayload::Users(GetUsersPacket { user_ids }),
+        )
+        .await
     }
 
     async fn receiving_task(&mut self, mut read_stream: OwnedReadHalf, write_stream: Arc<Mutex<OwnedWriteHalf>>) {
@@ -129,7 +146,7 @@ impl Client {
             },
             ServerPayload::Login(packet) => match packet.status {
                 Status::Success => {
-                    info!("succefully logged in");
+                    info!("Succefully logged in");
                     event_send.send(TuiEvent::LoggedIn).await?;
                     Ok(())
                 }
@@ -156,6 +173,22 @@ impl Client {
             ServerPayload::ChannelsList(packet) => match packet.status {
                 Status::Success => {
                     event_send.send(TuiEvent::ChannelIDs(packet.channel_ids)).await?;
+                    Ok(())
+                }
+                Status::Failed => todo!(),
+                Status::Notification => panic!("todo"),
+            },
+            ServerPayload::UserStatuses(packet) => match packet.status {
+                Status::Success => {
+                    event_send.send(TuiEvent::UserStatusesUpdate(packet.users)).await?;
+                    Ok(())
+                }
+                Status::Failed => todo!(),
+                Status::Notification => panic!("todo"),
+            },
+            ServerPayload::Users(packet) => match packet.status {
+                Status::Success => {
+                    event_send.send(TuiEvent::Users(packet.users)).await?;
                     Ok(())
                 }
                 Status::Failed => todo!(),

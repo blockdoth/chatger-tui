@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use crate::network::protocol::Channel;
+use crate::network::protocol::{Channel, UserData, UserStatus};
 use crate::tui::Focus;
 use crate::tui::framework::FromLog;
 use crate::tui::logs::LogEntry;
@@ -29,6 +29,8 @@ pub enum TuiEvent {
     ScrollUp,
     ScrollDown,
     ConnectAndLogin(SocketAddr, String, String),
+    UserStatusesUpdate(Vec<(u64, UserStatus)>),
+    Users(Vec<UserData>),
 }
 
 impl FromLog for TuiEvent {

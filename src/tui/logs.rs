@@ -18,16 +18,17 @@ pub struct LogEntry {
 impl LogEntry {
     /// Converts a log entry into a styled `Line` for display in the terminal UI.
     pub fn format(&self) -> Line<'_> {
+        use log::Level::*;
         let timestamp_str = self.timestamp.format("%H:%M:%S").to_string();
         let level_str = format!("[{}]", self.level);
         let message_str = &self.message;
 
         let style = match self.level {
-            log::Level::Error => Style::default().fg(Color::Red),
-            log::Level::Warn => Style::default().fg(Color::Yellow),
-            log::Level::Info => Style::default().fg(Color::Cyan),
-            log::Level::Debug => Style::default().fg(Color::Blue),
-            log::Level::Trace => Style::default().fg(Color::Magenta),
+            Error => Style::default().fg(Color::Red),
+            Warn => Style::default().fg(Color::Yellow),
+            Info => Style::default().fg(Color::Cyan),
+            Debug => Style::default().fg(Color::Blue),
+            Trace => Style::default().fg(Color::Magenta),
         };
         Line::from(vec![
             Span::raw(format!("{timestamp_str} ")),

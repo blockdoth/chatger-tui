@@ -98,56 +98,57 @@ impl Tui<TuiEvent> for State {
     }
 
     fn process_event(&self, event: Event) -> Option<TuiEvent> {
+        use KeyCode::*;
         match event {
             Event::Key(key_event) => match self.focus {
                 Focus::Channels => match key_event.code {
-                    KeyCode::Up => Some(TuiEvent::ChannelUp),
-                    KeyCode::Down => Some(TuiEvent::ChannelDown),
-                    KeyCode::Right => Some(TuiEvent::FocusChange(Focus::ChatHistory)),
-                    KeyCode::Char('q') | KeyCode::Char('Q') => Some(TuiEvent::Exit),
-                    KeyCode::Char('l') | KeyCode::Char('L') => Some(TuiEvent::ToggleLogs),
-                    KeyCode::Char(_) => Some(TuiEvent::FocusChange(Focus::ChatInput(0))),
+                    Up => Some(TuiEvent::ChannelUp),
+                    Down => Some(TuiEvent::ChannelDown),
+                    Right => Some(TuiEvent::FocusChange(Focus::ChatHistory)),
+                    Char('q') | Char('Q') => Some(TuiEvent::Exit),
+                    Char('l') | Char('L') => Some(TuiEvent::ToggleLogs),
+                    Char(_) => Some(TuiEvent::FocusChange(Focus::ChatInput(0))),
                     _ => None,
                 },
                 Focus::ChatHistory => match key_event.code {
-                    KeyCode::Left => Some(TuiEvent::FocusChange(Focus::Channels)),
-                    KeyCode::Right if self.show_logs => Some(TuiEvent::FocusChange(Focus::Logs)),
-                    KeyCode::Right => Some(TuiEvent::FocusChange(Focus::Users)),
-                    KeyCode::Up => Some(TuiEvent::ScrollUp),
-                    KeyCode::Down => Some(TuiEvent::ScrollDown),
-                    KeyCode::Char('q') | KeyCode::Char('Q') => Some(TuiEvent::Exit),
-                    KeyCode::Char('l') | KeyCode::Char('L') => Some(TuiEvent::ToggleLogs),
-                    KeyCode::Char(_) => Some(TuiEvent::FocusChange(Focus::ChatInput(0))),
+                    Left => Some(TuiEvent::FocusChange(Focus::Channels)),
+                    Right if self.show_logs => Some(TuiEvent::FocusChange(Focus::Logs)),
+                    Right => Some(TuiEvent::FocusChange(Focus::Users)),
+                    Up => Some(TuiEvent::ScrollUp),
+                    Down => Some(TuiEvent::ScrollDown),
+                    Char('q') | Char('Q') => Some(TuiEvent::Exit),
+                    Char('l') | Char('L') => Some(TuiEvent::ToggleLogs),
+                    Char(_) => Some(TuiEvent::FocusChange(Focus::ChatInput(0))),
                     _ => None,
                 },
                 Focus::ChatInput(_) => match key_event.code {
-                    KeyCode::Up => Some(TuiEvent::FocusChange(Focus::ChatHistory)),
-                    KeyCode::Left if key_event.modifiers == KeyModifiers::CONTROL => Some(TuiEvent::InputLeftTab),
-                    KeyCode::Right if key_event.modifiers == KeyModifiers::CONTROL => Some(TuiEvent::InputRightTab),
-                    KeyCode::Left => Some(TuiEvent::InputLeft),
-                    KeyCode::Right => Some(TuiEvent::InputRight),
-                    KeyCode::Enter => Some(TuiEvent::InputEnter),
-                    KeyCode::Char(chr) => Some(TuiEvent::InputChar(chr)),
-                    KeyCode::Backspace => Some(TuiEvent::InputDelete),
+                    Up => Some(TuiEvent::FocusChange(Focus::ChatHistory)),
+                    Left if key_event.modifiers == KeyModifiers::CONTROL => Some(TuiEvent::InputLeftTab),
+                    Right if key_event.modifiers == KeyModifiers::CONTROL => Some(TuiEvent::InputRightTab),
+                    Left => Some(TuiEvent::InputLeft),
+                    Right => Some(TuiEvent::InputRight),
+                    Enter => Some(TuiEvent::InputEnter),
+                    Char(chr) => Some(TuiEvent::InputChar(chr)),
+                    Backspace => Some(TuiEvent::InputDelete),
 
                     _ => None,
                 },
                 Focus::Users => match key_event.code {
-                    KeyCode::Left if self.show_logs => Some(TuiEvent::FocusChange(Focus::Logs)),
-                    KeyCode::Left => Some(TuiEvent::FocusChange(Focus::ChatHistory)),
-                    KeyCode::Char('q') | KeyCode::Char('Q') => Some(TuiEvent::Exit),
-                    KeyCode::Char('l') | KeyCode::Char('L') => Some(TuiEvent::ToggleLogs),
-                    KeyCode::Char(_) => Some(TuiEvent::FocusChange(Focus::ChatInput(0))),
+                    Left if self.show_logs => Some(TuiEvent::FocusChange(Focus::Logs)),
+                    Left => Some(TuiEvent::FocusChange(Focus::ChatHistory)),
+                    Char('q') | Char('Q') => Some(TuiEvent::Exit),
+                    Char('l') | Char('L') => Some(TuiEvent::ToggleLogs),
+                    Char(_) => Some(TuiEvent::FocusChange(Focus::ChatInput(0))),
                     _ => None,
                 },
                 Focus::Logs => match key_event.code {
-                    KeyCode::Left => Some(TuiEvent::FocusChange(Focus::ChatHistory)),
-                    KeyCode::Right => Some(TuiEvent::FocusChange(Focus::Users)),
-                    KeyCode::Up => Some(TuiEvent::ScrollUp),
-                    KeyCode::Down => Some(TuiEvent::ScrollDown),
-                    KeyCode::Char('q') | KeyCode::Char('Q') => Some(TuiEvent::Exit),
-                    KeyCode::Char('l') | KeyCode::Char('L') => Some(TuiEvent::ToggleLogs),
-                    KeyCode::Char(_) => Some(TuiEvent::FocusChange(Focus::ChatInput(0))),
+                    Left => Some(TuiEvent::FocusChange(Focus::ChatHistory)),
+                    Right => Some(TuiEvent::FocusChange(Focus::Users)),
+                    Up => Some(TuiEvent::ScrollUp),
+                    Down => Some(TuiEvent::ScrollDown),
+                    Char('q') | Char('Q') => Some(TuiEvent::Exit),
+                    Char('l') | Char('L') => Some(TuiEvent::ToggleLogs),
+                    Char(_) => Some(TuiEvent::FocusChange(Focus::ChatInput(0))),
 
                     _ => None,
                 },
@@ -157,39 +158,40 @@ impl Tui<TuiEvent> for State {
     }
 
     async fn handle_event(&mut self, event: TuiEvent, event_send: &Sender<TuiEvent>, client: &mut Client) -> Result<()> {
+        use TuiEvent::*;
         match event {
-            TuiEvent::Exit => self.should_quit = true,
-            TuiEvent::ToggleLogs => {
+            Exit => self.should_quit = true,
+            ToggleLogs => {
                 self.show_logs = !self.show_logs;
                 self.focus = Focus::ChatHistory;
             }
-            TuiEvent::Log(entry) => self.logs.push(entry),
-            TuiEvent::ChannelUp => {
+            Log(entry) => self.logs.push(entry),
+            ChannelUp => {
                 if self.active_channel_idx == 0 {
                     self.active_channel_idx = self.channels.len().saturating_sub(1);
                 } else {
                     self.active_channel_idx -= 1;
                 }
             }
-            TuiEvent::ChannelDown => {
+            ChannelDown => {
                 self.active_channel_idx = (self.active_channel_idx + 1) % self.channels.len();
             }
-            TuiEvent::FocusChange(focus) => self.focus = focus,
-            TuiEvent::InputLeft => {
+            FocusChange(focus) => self.focus = focus,
+            InputLeft => {
                 if let Focus::ChatInput(i) = self.focus
                     && i > 0
                 {
                     self.focus = Focus::ChatInput(i - 1)
                 }
             }
-            TuiEvent::InputRight => {
+            InputRight => {
                 if let Focus::ChatInput(i) = self.focus
                     && i + 1 < self.chat_input.len()
                 {
                     self.focus = Focus::ChatInput(i + 1)
                 }
             }
-            TuiEvent::InputLeftTab => {
+            InputLeftTab => {
                 if let Focus::ChatInput(i) = self.focus
                     && i > 0
                 {
@@ -209,7 +211,7 @@ impl Tui<TuiEvent> for State {
                     self.focus = Focus::ChatInput(idx)
                 }
             }
-            TuiEvent::InputRightTab => {
+            InputRightTab => {
                 if let Focus::ChatInput(i) = self.focus
                     && i + 1 < self.chat_input.len()
                 {
@@ -225,7 +227,7 @@ impl Tui<TuiEvent> for State {
                     self.focus = Focus::ChatInput(idx)
                 }
             }
-            TuiEvent::InputDelete => {
+            InputDelete => {
                 if let Focus::ChatInput(i) = self.focus
                     && i > 0
                 {
@@ -233,7 +235,7 @@ impl Tui<TuiEvent> for State {
                     self.focus = Focus::ChatInput(i - 1)
                 }
             }
-            TuiEvent::InputEnter if self.chat_input.len() > 1 => {
+            InputEnter if self.chat_input.len() > 1 => {
                 if let Some(user) = &self.current_user {
                     // command_send.send(Command::SendMessage(self.chat_input.clone())).await?;
                     let message = ChatMessage {
@@ -256,8 +258,8 @@ impl Tui<TuiEvent> for State {
                     todo!("tui notification handling for trying to send a message while not logged in")
                 }
             }
-            TuiEvent::InputEnter => {} // Do nothing if above case falls through
-            TuiEvent::ScrollDown => match self.focus {
+            InputEnter => {} // Do nothing if above case falls through
+            ScrollDown => match self.focus {
                 Focus::ChatHistory => {
                     self.chat_scroll_offset = self.chat_scroll_offset.saturating_sub(1);
                 }
@@ -266,7 +268,7 @@ impl Tui<TuiEvent> for State {
                 }
                 _ => {}
             },
-            TuiEvent::ScrollUp => match self.focus {
+            ScrollUp => match self.focus {
                 Focus::ChatHistory => {
                     self.chat_scroll_offset = self.chat_scroll_offset.saturating_add(1);
                 }
@@ -275,14 +277,14 @@ impl Tui<TuiEvent> for State {
                 }
                 _ => {}
             },
-            TuiEvent::InputChar(chr) => {
+            InputChar(chr) => {
                 if let Focus::ChatInput(i) = self.focus {
                     self.chat_input.insert(i, chr);
 
                     self.focus = Focus::ChatInput(i + 1)
                 }
             }
-            TuiEvent::SetUserNamePassword(username, password) => {
+            SetUserNamePassword(username, password) => {
                 self.current_user = Some(UserProfile {
                     id: 0,
                     username,
@@ -290,32 +292,32 @@ impl Tui<TuiEvent> for State {
                     is_logged_in: false,
                 })
             }
-            TuiEvent::ConnectAndLogin(address, username, password) => {
+            ConnectAndLogin(address, username, password) => {
                 client.connect(address).await?;
                 client.login(username.clone(), password.clone()).await?;
                 self.server_connection_state = ServerState::Connected;
                 event_send.send(TuiEvent::SetUserNamePassword(username, password)).await;
                 self.server_address = Some(address);
             }
-            TuiEvent::LoggedIn => {
+            LoggedIn => {
                 if let Some(user) = &mut self.current_user {
                     user.is_logged_in = true;
                     client.request_channel_ids().await?;
                     client.request_user_statuses().await?;
                 }
             }
-            TuiEvent::ChannelIDs(channel_ids) => {
+            ChannelIDs(channel_ids) => {
                 if !channel_ids.is_empty() {
                     debug!("received channel ids {channel_ids:?}");
                     client.request_channels(channel_ids).await?
                 }
             }
-            TuiEvent::HealthCheck => {
+            HealthCheck => {
                 self.last_healthcheck = Utc::now();
                 client.request_user_statuses().await?;
             }
 
-            TuiEvent::Channels(channels) => {
+            Channels(channels) => {
                 debug!("received {channels:?}");
                 for channel in channels {
                     // I want to add the channel first and only then request
@@ -327,7 +329,7 @@ impl Tui<TuiEvent> for State {
                     client.request_history_by_timestamp(channel_id, Utc::now(), 50).await?;
                 }
             }
-            TuiEvent::UserStatusesUpdate(status_updates) => {
+            UserStatusesUpdate(status_updates) => {
                 // TODO what happens if a new user comes online? We dont get their name
                 debug!("received statuses{status_updates:?}");
 
@@ -347,7 +349,7 @@ impl Tui<TuiEvent> for State {
                     client.request_users(users_not_found).await;
                 }
             }
-            TuiEvent::Users(users) => {
+            Users(users) => {
                 let mut new_users: Vec<User> = users
                     .iter()
                     .map(|user| User {
@@ -367,7 +369,7 @@ impl Tui<TuiEvent> for State {
                 }
                 self.users.extend(new_users_map.into_values());
             }
-            TuiEvent::HistoryUpdate(messages) => {
+            HistoryUpdate(messages) => {
                 for message in messages {
                     let author_name = self
                         .users
@@ -398,7 +400,7 @@ impl Tui<TuiEvent> for State {
                     }
                 }
             }
-            TuiEvent::MessageSendAck(message_id) => {
+            MessageSendAck(message_id) => {
                 // Never passes because local display messages do not have an id yet
                 if let Some(message) = self
                     .chat_history
@@ -412,7 +414,7 @@ impl Tui<TuiEvent> for State {
                 }
             }
 
-            TuiEvent::Disconnected => {
+            Disconnected => {
                 self.server_connection_state = ServerState::Disconnected;
                 error!("TOOD reconnect logic");
 

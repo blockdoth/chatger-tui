@@ -16,6 +16,7 @@ use tokio::sync::{Mutex, oneshot};
 use tokio::task::JoinHandle;
 use tokio::time::{Duration, sleep};
 
+use crate::network::handle_message;
 use crate::network::protocol::client::{
     Anchor, ClientPacketType, ClientPayload, GetChannelsPacket, GetHistoryPacket, GetUsersPacket, LoginPacket, SendMessagePacket, Serialize,
 };
@@ -150,7 +151,7 @@ impl Client {
             loop {
                 match Self::read_message(&mut read_stream, &mut header_buffer, &mut payload_buffer).await {
                     Ok(payload) => {
-                        if let Err(e) = Self::handle_message(payload, &mut stream, event_send.clone()).await {
+                        if let Err(e) = handle_message(payload, &mut stream, event_send.clone()).await {
                             error!("Error while handling message: {e:?}");
                         }
                     }
@@ -165,95 +166,9 @@ impl Client {
             info!("Stopped receiving task");
         });
     }
-
-    async fn handle_message(payload: ServerPayload, stream: &mut Arc<Mutex<OwnedWriteHalf>>, event_send: Sender<TuiEvent>) -> Result<()> {
-        match payload {
-            ServerPayload::Health(packet) => match packet.kind {
-                HealthKind::Ping => {
-                    let mut stream = stream.lock().await;
-                    let payload = ClientPayload::Health(HealthCheckPacket { kind: HealthKind::Pong });
-                    Self::send_message(&mut stream, ClientPacketType::Healthcheck, payload).await?;
-                    event_send.send(TuiEvent::HealthCheck).await?;
-                    Ok(())
-                }
-                HealthKind::Pong => panic!("todo"),
-            },
-            ServerPayload::Login(packet) => match packet.status {
-                Status::Success => {
-                    info!("Succefully logged in");
-                    event_send.send(TuiEvent::LoggedIn).await?;
-                    Ok(())
-                }
-                Status::Failed => match packet.error_message {
-                    Some(message) => {
-                        error!("failed to log in {message}");
-                        Err(anyhow!("failed to log in {}", message))
-                    }
-                    None => {
-                        error!("failed to log in");
-                        Err(anyhow!("failed to log in"))
-                    }
-                },
-                Status::Notification => panic!("todo"),
-            },
-            ServerPayload::Channels(packet) => match packet.status {
-                Status::Success => {
-                    event_send.send(TuiEvent::Channels(packet.channels)).await?;
-                    Ok(())
-                }
-                Status::Failed => todo!(),
-                Status::Notification => panic!("todo"),
-            },
-            ServerPayload::ChannelsList(packet) => match packet.status {
-                Status::Success => {
-                    event_send.send(TuiEvent::ChannelIDs(packet.channel_ids)).await?;
-                    Ok(())
-                }
-                Status::Failed => todo!(),
-                Status::Notification => panic!("todo"),
-            },
-            ServerPayload::UserStatuses(packet) => match packet.status {
-                Status::Success => {
-                    event_send.send(TuiEvent::UserStatusesUpdate(packet.users)).await?;
-                    Ok(())
-                }
-                Status::Failed => todo!(),
-                Status::Notification => panic!("todo"),
-            },
-            ServerPayload::Users(packet) => match packet.status {
-                Status::Success => {
-                    event_send.send(TuiEvent::Users(packet.users)).await?;
-                    Ok(())
-                }
-                Status::Failed => todo!(),
-                Status::Notification => panic!("todo"),
-            },
-            ServerPayload::History(packet) => match packet.status {
-                Status::Success => {
-                    event_send.send(TuiEvent::HistoryUpdate(packet.messages)).await?;
-                    Ok(())
-                }
-                Status::Failed => todo!(),
-                Status::Notification => panic!("todo"),
-            },
-            ServerPayload::SendMessageAck(packet) => match packet.status {
-                Status::Success => {
-                    event_send.send(TuiEvent::MessageSendAck(packet.message_id)).await?;
-                    Ok(())
-                }
-                Status::Failed => {
-                    error!("Failed to send message {:?}", packet.error_message);
-                    Ok(())
-                }
-                Status::Notification => {
-                    info!("Got message notification from server TODO handle");
-                    Ok(())
-                }
-            },
-        }
-    }
 }
 
+// Actual sending and receiving functions
 impl Client {
     pub async fn send_message(stream: &mut OwnedWriteHalf, packet_type: ClientPacketType, payload: ClientPayload) -> Result<()> {
         debug!("Sending packet type: {packet_type:?}");

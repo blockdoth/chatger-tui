@@ -9,6 +9,9 @@ use crate::network::protocol::{Channel, HistoryMessage, MediaType, UserData, Use
 pub trait Deserialize: Sized {
     fn deserialize(bytes: &[u8]) -> Result<(Self, usize)>;
 }
+pub trait DeserializeByte: Sized {
+    fn deserialize_byte(byte: u8) -> Result<(Self)>;
+}
 
 #[repr(u8)]
 #[derive(Debug, Clone, PartialEq)]
@@ -23,17 +26,17 @@ pub enum ServerPacketType {
     Users = 0x08,
 }
 
-impl Deserialize for ServerPacketType {
-    fn deserialize(bytes: &[u8]) -> Result<(Self, usize)> {
-        match bytes[0] {
-            0x00 => Ok((ServerPacketType::Healthcheck, 1)),
-            0x01 => Ok((ServerPacketType::LoginAck, 1)),
-            0x02 => Ok((ServerPacketType::SendMessageAck, 1)),
-            0x04 => Ok((ServerPacketType::ChannelList, 1)),
-            0x05 => Ok((ServerPacketType::Channels, 1)),
-            0x06 => Ok((ServerPacketType::History, 1)),
-            0x07 => Ok((ServerPacketType::UserStatuses, 1)),
-            0x08 => Ok((ServerPacketType::Users, 1)),
+impl DeserializeByte for ServerPacketType {
+    fn deserialize_byte(byte: u8) -> Result<(Self)> {
+        match byte {
+            0x00 => Ok(ServerPacketType::Healthcheck),
+            0x01 => Ok(ServerPacketType::LoginAck),
+            0x02 => Ok(ServerPacketType::SendMessageAck),
+            0x04 => Ok(ServerPacketType::ChannelList),
+            0x05 => Ok(ServerPacketType::Channels),
+            0x06 => Ok(ServerPacketType::History),
+            0x07 => Ok(ServerPacketType::UserStatuses),
+            0x08 => Ok(ServerPacketType::Users),
             other => Err(anyhow!("Unknown ServerPacketType value: {}", other)),
         }
     }
@@ -59,9 +62,10 @@ impl From<ServerPayload> for Payload {
 
 impl ServerPayload {
     pub fn deserialize_packet(bytes: &[u8], packet_type: ServerPacketType) -> Result<Self> {
+        use ServerPacketType::*;
         match packet_type {
-            ServerPacketType::LoginAck => {
-                let (status, _) = Status::deserialize(&bytes[0..1])?;
+            LoginAck => {
+                let status = Status::deserialize_byte(bytes[0])?;
 
                 let error_message = if status == Status::Failed {
                     Some(String::deserialize(&bytes[1..])?.0)
@@ -71,12 +75,12 @@ impl ServerPayload {
 
                 Ok(ServerPayload::Login(LoginAckPacket { status, error_message }))
             }
-            ServerPacketType::Healthcheck => {
-                let (kind, _) = HealthKind::deserialize(&bytes[0..1])?;
+            Healthcheck => {
+                let kind = HealthKind::deserialize_byte(bytes[0])?;
                 Ok(ServerPayload::Health(HealthCheckPacket { kind }))
             }
-            ServerPacketType::ChannelList => {
-                let (status, _) = Status::deserialize(&bytes[0..1])?;
+            ChannelList => {
+                let status = Status::deserialize_byte(bytes[0])?;
                 let channels_count = u16::from_be_bytes(bytes[1..3].try_into()?) as usize;
 
                 let mut byte_index = 3;
@@ -99,8 +103,8 @@ impl ServerPayload {
                     error_message,
                 }))
             }
-            ServerPacketType::Channels => {
-                let (status, _) = Status::deserialize(&bytes[0..1])?;
+            Channels => {
+                let status = Status::deserialize_byte(bytes[0])?;
                 let channels_count = u16::from_be_bytes(bytes[1..3].try_into()?) as usize;
 
                 let mut channels = Vec::with_capacity(channels_count);
@@ -124,8 +128,8 @@ impl ServerPayload {
                     error_message,
                 }))
             }
-            ServerPacketType::UserStatuses => {
-                let (status, _) = Status::deserialize(&bytes[0..1])?;
+            UserStatuses => {
+                let status = Status::deserialize_byte(bytes[0])?;
                 let user_count = u16::from_be_bytes(bytes[1..3].try_into()?) as usize;
 
                 let mut user_statuses = Vec::with_capacity(user_count);
@@ -151,8 +155,8 @@ impl ServerPayload {
                     error_message,
                 }))
             }
-            ServerPacketType::Users => {
-                let (status, _) = Status::deserialize(&bytes[0..1])?;
+            Users => {
+                let status = Status::deserialize_byte(bytes[0])?;
                 let user_count = u8::from_be_bytes(bytes[1..2].try_into()?) as usize;
 
                 let mut users = Vec::with_capacity(user_count);
@@ -176,8 +180,8 @@ impl ServerPayload {
                     error_message,
                 }))
             }
-            ServerPacketType::History => {
-                let (status, _) = Status::deserialize(&bytes[0..1])?;
+            History => {
+                let status = Status::deserialize_byte(bytes[0])?;
                 let message_count = u8::from_be_bytes(bytes[1..2].try_into()?) as usize;
 
                 let mut messages = Vec::with_capacity(message_count);
@@ -201,8 +205,8 @@ impl ServerPayload {
                     error_message,
                 }))
             }
-            ServerPacketType::SendMessageAck => {
-                let (status, _) = Status::deserialize(&bytes[0..1])?;
+            SendMessageAck => {
+                let status = Status::deserialize_byte(bytes[0])?;
 
                 let message_id = u64::from_be_bytes(bytes[1..9].try_into()?);
 
@@ -230,12 +234,12 @@ pub enum Status {
     Notification = 0x02, // Only used for HISTORY
 }
 
-impl Deserialize for Status {
-    fn deserialize(bytes: &[u8]) -> Result<(Self, usize)> {
-        match bytes[0] {
-            0x00 => Ok((Status::Success, 1)),
-            0x01 => Ok((Status::Failed, 1)),
-            0x02 => Ok((Status::Notification, 1)),
+impl DeserializeByte for Status {
+    fn deserialize_byte(bytes: u8) -> Result<Self> {
+        match bytes {
+            0x00 => Ok(Status::Success),
+            0x01 => Ok(Status::Failed),
+            0x02 => Ok(Status::Notification),
             _ => Err(anyhow!("Unknown status byte")),
         }
     }
@@ -256,11 +260,11 @@ pub enum HealthKind {
     Pong = 0x01,
 }
 
-impl Deserialize for HealthKind {
-    fn deserialize(bytes: &[u8]) -> Result<(Self, usize)> {
-        match bytes[0] {
-            0x00 => Ok((HealthKind::Ping, 1)),
-            0x01 => Ok((HealthKind::Pong, 1)),
+impl DeserializeByte for HealthKind {
+    fn deserialize_byte(byte: u8) -> Result<(Self)> {
+        match byte {
+            0x00 => Ok(HealthKind::Ping),
+            0x01 => Ok(HealthKind::Pong),
             k => Err(anyhow!("Unknown health check kind {k}")),
         }
     }

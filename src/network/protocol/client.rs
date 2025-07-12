@@ -40,24 +40,26 @@ pub enum ClientPayload {
     Users(GetUsersPacket),
     History(GetHistoryPacket),
 }
-impl From<ClientPayload> for Payload {
-    fn from(payload: ClientPayload) -> Self {
-        Payload::Client(payload)
-    }
-}
 
 impl Serialize for ClientPayload {
     fn serialize(self) -> Vec<u8> {
+        use ClientPayload::*; // Cool trick      
         match self {
-            ClientPayload::Login(packet) => packet.serialize(),
-            ClientPayload::Health(packet) => packet.serialize(),
-            ClientPayload::SendMessage(packet) => packet.serialize(),
-            ClientPayload::Channels(packet) => packet.serialize(),
-            ClientPayload::ChannelsList => vec![],
-            ClientPayload::UserStatuses => vec![],
-            ClientPayload::Users(packet) => packet.serialize(),
-            ClientPayload::History(packet) => packet.serialize(),
+            Login(packet) => packet.serialize(),
+            Health(packet) => packet.serialize(),
+            SendMessage(packet) => packet.serialize(),
+            Channels(packet) => packet.serialize(),
+            ChannelsList => vec![],
+            UserStatuses => vec![],
+            Users(packet) => packet.serialize(),
+            History(packet) => packet.serialize(),
         }
+    }
+}
+
+impl From<ClientPayload> for Payload {
+    fn from(payload: ClientPayload) -> Self {
+        Payload::Client(payload)
     }
 }
 

@@ -32,6 +32,7 @@ pub enum TuiEvent {
     UserStatusesUpdate(Vec<(u64, UserStatus)>),
     Users(Vec<UserData>),
     HistoryUpdate(Vec<HistoryMessage>),
+    MessageSendAck(u64),
 }
 
 impl FromLog for TuiEvent {

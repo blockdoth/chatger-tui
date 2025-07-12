@@ -17,10 +17,11 @@ use tokio::task::JoinHandle;
 use tokio::time::{Duration, sleep};
 
 use crate::network::protocol::client::{
-    Anchor, ClientPacketType, ClientPayload, GetChannelsPacket, GetHistoryPacket, GetUsersPacket, LoginPacket, Serialize,
+    Anchor, ClientPacketType, ClientPayload, GetChannelsPacket, GetHistoryPacket, GetUsersPacket, LoginPacket, SendMessagePacket, Serialize,
 };
 use crate::network::protocol::header::{Header, PacketType};
 use crate::network::protocol::server::{Deserialize, HealthCheckPacket, HealthKind, ServerPacketType, ServerPayload, Status};
+use crate::tui::chat::ChatMessage;
 use crate::tui::events::TuiEvent;
 use crate::tui::framework::Tui;
 
@@ -113,6 +114,21 @@ impl Client {
                 channel_id,
                 anchor: Anchor::Timestamp(timestamp.timestamp() as u64),
                 num_messages_back,
+            }),
+        )
+        .await
+    }
+
+    pub async fn send_chat_message(&mut self, channel_id: u64, reply_id: u64, message_text: String, media_ids: Vec<u64>) -> Result<()> {
+        let mut write_stream = self.write_stream.as_mut().ok_or_else(|| anyhow!("Not connected to server"))?.lock().await;
+        Self::send_message(
+            &mut write_stream,
+            ClientPacketType::SendMessage,
+            ClientPayload::SendMessage(SendMessagePacket {
+                channel_id,
+                reply_id,
+                message_text,
+                media_ids,
             }),
         )
         .await
@@ -219,6 +235,20 @@ impl Client {
                 }
                 Status::Failed => todo!(),
                 Status::Notification => panic!("todo"),
+            },
+            ServerPayload::SendMessageAck(packet) => match packet.status {
+                Status::Success => {
+                    event_send.send(TuiEvent::MessageSendAck(packet.message_id)).await?;
+                    Ok(())
+                }
+                Status::Failed => {
+                    error!("Failed to send message {:?}", packet.error_message);
+                    Ok(())
+                }
+                Status::Notification => {
+                    info!("Got message notification from server TODO handle");
+                    Ok(())
+                }
             },
         }
     }

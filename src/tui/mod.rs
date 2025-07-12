@@ -11,7 +11,7 @@ use anyhow::{Ok, Result, anyhow};
 use async_trait::async_trait;
 use chrono::{DateTime, Days, NaiveDateTime, Utc};
 use crossterm::event::{Event, KeyCode, KeyModifiers};
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use ratatui::Frame;
 use tokio::sync::mpsc::{self, Sender};
 use tokio::sync::watch::error;
@@ -237,17 +237,19 @@ impl Tui<TuiEvent> for State {
                 if let Some(user) = &self.current_user {
                     // command_send.send(Command::SendMessage(self.chat_input.clone())).await?;
                     let message = ChatMessage {
-                        id: 0,
+                        id: None,
                         author_name: user.username.to_owned(),
                         author_id: user.id,
+                        reply_id: 0, // TODO replies
                         timestamp: Utc::now(),
                         message: self.chat_input.clone(),
                         status: ChatMessageStatus::Sending,
                     };
-                    self.chat_history
-                        .entry(self.channels.get(self.active_channel_idx).unwrap().id)
-                        .and_modify(|log| log.push(message));
+                    let channel_id = self.channels.get(self.active_channel_idx).unwrap().id; // TODO better
 
+                    self.chat_history.entry(channel_id).and_modify(|log| log.push(message));
+
+                    client.send_chat_message(channel_id, 0, self.chat_input.clone(), vec![]).await; // TODO improve
                     self.focus = Focus::ChatInput(0);
                     self.chat_input = " ".to_owned();
                 } else {
@@ -377,7 +379,8 @@ impl Tui<TuiEvent> for State {
                     let timestamp = DateTime::from_timestamp(message.sent_timestamp as i64, 0).ok_or_else(|| anyhow!("Invalid timestamp"))?;
 
                     let display_message = ChatMessage {
-                        id: message.message_id,
+                        id: Some(message.message_id),
+                        reply_id: message.message_id,
                         author_name,
                         author_id: message.user_id,
                         timestamp,
@@ -393,6 +396,19 @@ impl Tui<TuiEvent> for State {
                         debug!("inserting {display_message:?} into history of channel {channel_id}");
                         display_messages.push(display_message);
                     }
+                }
+            }
+            TuiEvent::MessageSendAck(message_id) => {
+                info!("{message_id}");
+                if let Some(message) = self
+                    .chat_history
+                    .iter_mut()
+                    .find_map(|(channel_id, messages)| messages.iter_mut().find(|m| m.id == Some(message_id)))
+                {
+                    // Update the message status
+                    message.status = ChatMessageStatus::Send;
+                } else {
+                    info!("Message with id {message_id} not found in chat history");
                 }
             }
 

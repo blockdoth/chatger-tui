@@ -15,6 +15,7 @@ pub trait Serialize {
 pub enum ClientPacketType {
     Healthcheck = 0x80,
     Login = 0x81,
+    SendMessage = 0x82,
     ChannelsList = 0x84,
     Channels = 0x85,
     History = 0x86,
@@ -33,6 +34,7 @@ pub enum ClientPayload {
     Login(LoginPacket),
     Health(HealthCheckPacket),
     Channels(GetChannelsPacket),
+    SendMessage(SendMessagePacket),
     ChannelsList,
     UserStatuses,
     Users(GetUsersPacket),
@@ -49,6 +51,7 @@ impl Serialize for ClientPayload {
         match self {
             ClientPayload::Login(packet) => packet.serialize(),
             ClientPayload::Health(packet) => packet.serialize(),
+            ClientPayload::SendMessage(packet) => packet.serialize(),
             ClientPayload::Channels(packet) => packet.serialize(),
             ClientPayload::ChannelsList => vec![],
             ClientPayload::UserStatuses => vec![],
@@ -164,6 +167,23 @@ pub struct SendMessagePacket {
     pub reply_id: u64,
     pub media_ids: Vec<u64>,
     pub message_text: String,
+}
+
+// [packet content]: [channel_id|8][reply_id|8][num_media|1][media_id1|8][media_id2|8]...[media_idnum|8][message_text]
+impl Serialize for SendMessagePacket {
+    fn serialize(self) -> Vec<u8> {
+        let mut bytes = vec![];
+        bytes.extend(self.channel_id.to_be_bytes());
+        bytes.extend(self.reply_id.to_be_bytes());
+        bytes.push(self.media_ids.len() as u8);
+
+        for media_id in &self.media_ids {
+            bytes.extend(media_id.to_be_bytes());
+        }
+
+        bytes.extend(self.message_text.as_bytes());
+        bytes
+    }
 }
 
 #[derive(Debug, Clone)]

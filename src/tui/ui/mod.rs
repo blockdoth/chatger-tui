@@ -167,7 +167,7 @@ fn render_channels(state: &State, frame: &mut Frame, area: Rect) {
 fn render_profile(state: &State, frame: &mut Frame, area: Rect) {
     let (borders, border_style, border_corners) = borders_profile(state);
     let current_user = if let Some(user) = &state.current_user {
-        let username = format!("user: {}", user.username.clone());
+        let username = format!("User: {}", user.username.clone());
         if user.is_logged_in {
             Span::styled(username, Style::default().fg(Color::Green))
         } else {

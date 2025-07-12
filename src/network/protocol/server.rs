@@ -15,6 +15,7 @@ pub trait Deserialize: Sized {
 pub enum ServerPacketType {
     Healthcheck = 0x00,
     LoginAck = 0x01,
+    SendMessageAck = 0x02,
     ChannelList = 0x04,
     Channels = 0x05,
     History = 0x06,
@@ -27,6 +28,7 @@ impl Deserialize for ServerPacketType {
         match bytes[0] {
             0x00 => Ok((ServerPacketType::Healthcheck, 1)),
             0x01 => Ok((ServerPacketType::LoginAck, 1)),
+            0x02 => Ok((ServerPacketType::SendMessageAck, 1)),
             0x04 => Ok((ServerPacketType::ChannelList, 1)),
             0x05 => Ok((ServerPacketType::Channels, 1)),
             0x06 => Ok((ServerPacketType::History, 1)),
@@ -41,6 +43,7 @@ impl Deserialize for ServerPacketType {
 pub enum ServerPayload {
     Health(HealthCheckPacket),
     Login(LoginAckPacket),
+    SendMessageAck(SendMessageAckPacket),
     Channels(GetChannelsResponsePacket),
     ChannelsList(ChannelsListPacket),
     UserStatuses(UserStatusesPacket),
@@ -198,6 +201,23 @@ impl ServerPayload {
                     error_message,
                 }))
             }
+            ServerPacketType::SendMessageAck => {
+                let (status, _) = Status::deserialize(&bytes[0..1])?;
+
+                let message_id = u64::from_be_bytes(bytes[1..9].try_into()?);
+
+                let error_message = if status == Status::Failed {
+                    Some(String::deserialize(&bytes[1..])?.0)
+                } else {
+                    None
+                };
+
+                Ok(ServerPayload::SendMessageAck(SendMessageAckPacket {
+                    status,
+                    message_id,
+                    error_message,
+                }))
+            }
         }
     }
 }
@@ -261,7 +281,7 @@ pub struct LoginAckPacket {
 pub struct SendMessageAckPacket {
     pub status: Status,
     pub message_id: u64,
-    pub error_message: String,
+    pub error_message: Option<String>,
 }
 
 #[derive(Debug, Clone)]

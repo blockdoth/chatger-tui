@@ -22,9 +22,10 @@ impl From<Channel> for DisplayChannel {
 
 #[derive(Debug)]
 pub struct ChatMessage {
-    pub id: u64,
+    pub id: Option<u64>,
     pub author_name: String,
     pub author_id: u64,
+    pub reply_id: u64,
     pub timestamp: DateTime<Utc>,
     pub message: String,
     pub status: ChatMessageStatus,

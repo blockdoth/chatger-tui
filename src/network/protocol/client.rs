@@ -12,11 +12,15 @@ pub enum ClientPacketType {
     Healthcheck = 0x80,
     Login = 0x81,
     SendMessage = 0x82,
+    SendMedia = 0x83,
     ChannelsList = 0x84,
     Channels = 0x85,
     History = 0x86,
     UserStatuses = 0x87,
     Users = 0x88,
+    Media = 0x89,
+    Typing = 0x90,
+    Status = 0x91,
 }
 
 impl Serialize for ClientPacketType {
@@ -31,10 +35,14 @@ pub enum ClientPayload {
     Health(HealthCheckPacket),
     Channels(GetChannelsPacket),
     SendMessage(SendMessagePacket),
+    SendMedia(SendMediaPacket),
     ChannelsList,
     UserStatuses,
     Users(GetUsersPacket),
     History(GetHistoryPacket),
+    Media(GetMediaPacket),
+    Typing(TypingPacket),
+    Status(StatusPacket),
 }
 
 impl Serialize for ClientPayload {
@@ -44,11 +52,15 @@ impl Serialize for ClientPayload {
             Login(packet) => packet.serialize(),
             Health(packet) => packet.serialize(),
             SendMessage(packet) => packet.serialize(),
+            SendMedia(packet) => packet.serialize(),
             Channels(packet) => packet.serialize(),
             ChannelsList => vec![],
             UserStatuses => vec![],
             Users(packet) => packet.serialize(),
             History(packet) => packet.serialize(),
+            Media(packet) => packet.serialize(),
+            Typing(packet) => packet.serialize(),
+            Status(packet) => packet.serialize(),
         }
     }
 }
@@ -185,15 +197,38 @@ impl Serialize for SendMessagePacket {
 }
 
 #[derive(Debug, Clone)]
+pub struct GetMediaPacket {
+    pub media_id: u64,
+}
+
+impl Serialize for GetMediaPacket {
+    fn serialize(self) -> Vec<u8> {
+        self.media_id.to_be_bytes().to_vec()
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct SendMediaPacket {
     pub filename: String,
     pub media_type: MediaType,
     pub media_data: Vec<u8>,
 }
 
-#[derive(Debug, Clone)]
-pub struct GetMediaPacket {
-    pub media_id: u64,
+impl Serialize for SendMediaPacket {
+    fn serialize(self) -> Vec<u8> {
+        let filename_bytes = self.filename.as_bytes();
+        let filename_len = filename_bytes.len();
+        let media_data_len = self.media_data.len();
+
+        let mut bytes = Vec::with_capacity(4 + filename_len + 1 + 4 + media_data_len);
+
+        bytes.extend_from_slice(&(filename_len as u32).to_be_bytes());
+        bytes.extend_from_slice(filename_bytes);
+        bytes.extend_from_slice(&self.media_type.serialize());
+        bytes.extend_from_slice(&(media_data_len as u32).to_be_bytes());
+        bytes.extend_from_slice(&self.media_data);
+        bytes
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -202,11 +237,13 @@ pub struct TypingPacket {
     pub channel_id: u64,
 }
 
-#[derive(Debug, Clone)]
-pub struct UserTypingPacket {
-    pub is_typing: bool,
-    pub user_id: u64,
-    pub channel_id: u64,
+impl Serialize for TypingPacket {
+    fn serialize(self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(9);
+        bytes.push(self.is_typing as u8);
+        bytes.extend_from_slice(&self.channel_id.to_be_bytes());
+        bytes
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -214,8 +251,8 @@ pub struct StatusPacket {
     pub status: UserStatus,
 }
 
-#[derive(Debug, Clone)]
-pub struct UserStatusPacket {
-    pub status: UserStatus,
-    pub user_id: u64,
+impl Serialize for StatusPacket {
+    fn serialize(self) -> Vec<u8> {
+        self.status.serialize()
+    }
 }

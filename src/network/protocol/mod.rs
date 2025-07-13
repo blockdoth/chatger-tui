@@ -1,5 +1,8 @@
+use std::vec;
+
 use anyhow::{Ok, Result, anyhow};
 
+use crate::network::protocol::client::Serialize;
 use crate::network::protocol::server::Deserialize;
 pub mod client;
 pub mod header;
@@ -13,6 +16,12 @@ pub enum MediaType {
     Audio = 0x02,
     Image = 0x03,
     Video = 0x04,
+}
+
+impl Serialize for MediaType {
+    fn serialize(self) -> Vec<u8> {
+        vec![self as u8]
+    }
 }
 
 #[repr(u8)]
@@ -34,6 +43,11 @@ impl Deserialize for UserStatus {
             0x03 => Ok((UserStatus::DoNotDisturb, 1)),
             other => Err(anyhow!("Unknown UserStatus value: {}", other)),
         }
+    }
+}
+impl Serialize for UserStatus {
+    fn serialize(self) -> Vec<u8> {
+        vec![self as u8]
     }
 }
 

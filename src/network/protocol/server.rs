@@ -17,6 +17,7 @@ pub enum ServerPacketType {
     Healthcheck = 0x00,
     LoginAck = 0x01,
     SendMessageAck = 0x02,
+    SendMediaAck = 0x03,
     ChannelList = 0x04,
     Channels = 0x05,
     History = 0x06,
@@ -26,15 +27,17 @@ pub enum ServerPacketType {
 
 impl DeserializeByte for ServerPacketType {
     fn deserialize_byte(byte: u8) -> Result<Self> {
+        use ServerPacketType::*;
         match byte {
-            0x00 => Ok(ServerPacketType::Healthcheck),
-            0x01 => Ok(ServerPacketType::LoginAck),
-            0x02 => Ok(ServerPacketType::SendMessageAck),
-            0x04 => Ok(ServerPacketType::ChannelList),
-            0x05 => Ok(ServerPacketType::Channels),
-            0x06 => Ok(ServerPacketType::History),
-            0x07 => Ok(ServerPacketType::UserStatuses),
-            0x08 => Ok(ServerPacketType::Users),
+            0x00 => Ok(Healthcheck),
+            0x01 => Ok(LoginAck),
+            0x02 => Ok(SendMessageAck),
+            0x03 => Ok(SendMediaAck),
+            0x04 => Ok(ChannelList),
+            0x05 => Ok(Channels),
+            0x06 => Ok(History),
+            0x07 => Ok(UserStatuses),
+            0x08 => Ok(Users),
             other => Err(anyhow!("Unknown ServerPacketType value: {}", other)),
         }
     }
@@ -45,6 +48,7 @@ pub enum ServerPayload {
     Health(HealthCheckPacket),
     Login(LoginAckPacket),
     SendMessageAck(SendMessageAckPacket),
+    SendMediaAck(SendMediaAckPacket),
     Channels(GetChannelsResponsePacket),
     ChannelsList(ChannelsListPacket),
     UserStatuses(UserStatusesPacket),
@@ -81,6 +85,7 @@ impl ServerPayload {
             LoginAck => deserialize_variant!(bytes, ServerPayload::Login, LoginAckPacket),
             Healthcheck => deserialize_variant!(bytes, ServerPayload::Health, HealthCheckPacket),
             SendMessageAck => deserialize_variant!(bytes, ServerPayload::SendMessageAck, SendMessageAckPacket),
+            SendMediaAck => deserialize_variant!(bytes, ServerPayload::SendMediaAck, SendMediaAckPacket),
             ChannelList => deserialize_variant!(bytes, ServerPayload::ChannelsList, ChannelsListPacket),
             Channels => deserialize_variant!(bytes, ServerPayload::Channels, GetChannelsResponsePacket),
             History => deserialize_variant!(bytes, ServerPayload::History, HistoryPacket),
@@ -156,7 +161,7 @@ impl Deserialize for LoginAckPacket {
     fn deserialize(bytes: &[u8]) -> Result<(Self, usize)> {
         let status = Status::deserialize_byte(bytes[0])?;
         let mut byte_index = 1;
-        let (error_message, error_len) = deserialize_error(bytes, &status)?;
+        let (error_message, error_len) = deserialize_error(&bytes[byte_index..], &status)?;
         byte_index += error_len;
         Ok((LoginAckPacket { status, error_message }, byte_index))
     }
@@ -174,10 +179,10 @@ impl Deserialize for SendMessageAckPacket {
         let status = Status::deserialize_byte(bytes[0])?;
         let mut byte_index = 1;
 
-        let message_id = u64::from_be_bytes(bytes[1..9].try_into()?);
+        let message_id = u64::from_be_bytes(bytes[byte_index..byte_index + 1].try_into()?);
         byte_index += 8;
 
-        let (error_message, error_len) = deserialize_error(bytes, &status)?;
+        let (error_message, error_len) = deserialize_error(&bytes[byte_index..], &status)?;
         byte_index += error_len;
         Ok((
             SendMessageAckPacket {
@@ -194,7 +199,28 @@ impl Deserialize for SendMessageAckPacket {
 pub struct SendMediaAckPacket {
     pub status: Status,
     pub media_id: u64,
-    pub error_message: String,
+    pub error_message: Option<String>,
+}
+
+impl Deserialize for SendMediaAckPacket {
+    fn deserialize(bytes: &[u8]) -> Result<(Self, usize)> {
+        let status = Status::deserialize_byte(bytes[0])?;
+        let mut byte_index = 1;
+
+        let media_id = u64::from_be_bytes(bytes[byte_index..byte_index + 8].try_into()?);
+        byte_index += 8;
+
+        let (error_message, error_len) = deserialize_error(&bytes[byte_index..], &status)?;
+        byte_index += error_len;
+        Ok((
+            SendMediaAckPacket {
+                status,
+                media_id,
+                error_message,
+            },
+            byte_index,
+        ))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -218,7 +244,7 @@ impl Deserialize for ChannelsListPacket {
             byte_index += 8;
         }
 
-        let (error_message, error_len) = deserialize_error(bytes, &status)?;
+        let (error_message, error_len) = deserialize_error(&bytes[byte_index..], &status)?;
         byte_index += error_len;
         Ok((
             ChannelsListPacket {
@@ -252,7 +278,7 @@ impl Deserialize for GetChannelsResponsePacket {
             byte_index += read_bytes;
         }
 
-        let (error_message, error_len) = deserialize_error(bytes, &status)?;
+        let (error_message, error_len) = deserialize_error(&bytes[byte_index..], &status)?;
         byte_index += error_len;
         Ok((
             GetChannelsResponsePacket {
@@ -271,6 +297,7 @@ pub struct UsersPacket {
     pub users: Vec<UserData>,
     pub error_message: Option<String>,
 }
+
 impl Deserialize for UsersPacket {
     fn deserialize(bytes: &[u8]) -> Result<(Self, usize)> {
         let status = Status::deserialize_byte(bytes[0])?;
@@ -285,7 +312,7 @@ impl Deserialize for UsersPacket {
             byte_index += read_bytes;
         }
 
-        let (error_message, error_len) = deserialize_error(bytes, &status)?;
+        let (error_message, error_len) = deserialize_error(&bytes[byte_index..], &status)?;
         byte_index += error_len;
         Ok((
             UsersPacket {
@@ -318,7 +345,7 @@ impl Deserialize for HistoryPacket {
             messages.push(user);
             byte_index += read_bytes;
         }
-        let (error_message, error_len) = deserialize_error(bytes, &status)?;
+        let (error_message, error_len) = deserialize_error(&bytes[byte_index..], &status)?;
         byte_index += error_len;
         Ok((
             HistoryPacket {
@@ -354,7 +381,7 @@ impl Deserialize for UserStatusesPacket {
             users.push((user_id, user_status));
         }
 
-        let (error_message, error_len) = deserialize_error(bytes, &status)?;
+        let (error_message, error_len) = deserialize_error(&bytes[byte_index..], &status)?;
         byte_index += error_len;
         Ok((
             UserStatusesPacket {
@@ -374,4 +401,35 @@ pub struct MediaPacket {
     pub media_type: MediaType,
     pub media_data: Vec<u8>,
     pub error_message: Option<String>,
+}
+
+impl Deserialize for MediaPacket {
+    fn deserialize(bytes: &[u8]) -> Result<(Self, usize)> {
+        todo!()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct UserTypingPacket {
+    pub is_typing: bool,
+    pub user_id: u64,
+    pub channel_id: u64,
+}
+
+impl Deserialize for UserTypingPacket {
+    fn deserialize(bytes: &[u8]) -> Result<(Self, usize)> {
+        todo!()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct UserStatusPacket {
+    pub status: UserStatus,
+    pub user_id: u64,
+}
+
+impl Deserialize for UserStatusPacket {
+    fn deserialize(bytes: &[u8]) -> Result<(Self, usize)> {
+        todo!()
+    }
 }

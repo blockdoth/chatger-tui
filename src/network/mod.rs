@@ -100,5 +100,20 @@ pub async fn handle_message(payload: ServerPayload, stream: &mut Arc<Mutex<Owned
                 Ok(())
             }
         },
+        SendMediaAck(packet) => match packet.status {
+            Success => {
+                todo!();
+                // event_send.send(TuiEvent::MessageSendAck(packet.message_id)).await?;
+                Ok(())
+            }
+            Failed => {
+                error!("Failed to send media {:?}", packet.error_message);
+                Ok(())
+            }
+            Notification => {
+                info!("Got message notification from server TODO handle");
+                Ok(())
+            }
+        },
     }
 }

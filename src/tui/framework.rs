@@ -117,7 +117,7 @@ where
 
               }
 
-              _ = tokio::time::sleep(Duration::from_millis(10)) => {
+              _ = tokio::time::sleep(Duration::from_millis(0)) => {
 
                   if let Err(e) = self.app.on_tick().await {
                       error!("Failed during tick handler: {e:?}");

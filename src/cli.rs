@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
 use clap::Parser;
-use log::{Level, LevelFilter};
+use log::LevelFilter;
 
 /// Simple CLI to simulate login
 #[derive(Parser, Debug)]

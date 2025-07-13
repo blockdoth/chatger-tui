@@ -1,6 +1,4 @@
 use anyhow::{Result, anyhow};
-use futures::channel;
-use log::Log;
 
 use crate::network::client::MAX_MESSAGE_LENGTH;
 use crate::network::protocol::header::Payload;
@@ -10,7 +8,7 @@ pub trait Deserialize: Sized {
     fn deserialize(bytes: &[u8]) -> Result<(Self, usize)>;
 }
 pub trait DeserializeByte: Sized {
-    fn deserialize_byte(byte: u8) -> Result<(Self)>;
+    fn deserialize_byte(byte: u8) -> Result<Self>;
 }
 
 #[repr(u8)]
@@ -27,7 +25,7 @@ pub enum ServerPacketType {
 }
 
 impl DeserializeByte for ServerPacketType {
-    fn deserialize_byte(byte: u8) -> Result<(Self)> {
+    fn deserialize_byte(byte: u8) -> Result<Self> {
         match byte {
             0x00 => Ok(ServerPacketType::Healthcheck),
             0x01 => Ok(ServerPacketType::LoginAck),
@@ -60,168 +58,34 @@ impl From<ServerPayload> for Payload {
     }
 }
 
+fn deserialize_error(bytes: &[u8], status: &Status) -> Result<(Option<String>, usize)> {
+    if *status == Status::Failed {
+        let (msg, len) = String::deserialize(&bytes[1..])?;
+        Ok((Some(msg), len))
+    } else {
+        Ok((None, 0))
+    }
+}
+
+macro_rules! deserialize_variant {
+    ($bytes:ident, $variant:path, $packet:ty) => {{
+        let (packet, len) = <$packet>::deserialize($bytes)?;
+        Ok(($variant(packet), len))
+    }};
+}
+
 impl ServerPayload {
-    pub fn deserialize_packet(bytes: &[u8], packet_type: ServerPacketType) -> Result<Self> {
+    pub fn deserialize_packet(bytes: &[u8], packet_type: ServerPacketType) -> Result<(Self, usize)> {
         use ServerPacketType::*;
         match packet_type {
-            LoginAck => {
-                let status = Status::deserialize_byte(bytes[0])?;
-
-                let error_message = if status == Status::Failed {
-                    Some(String::deserialize(&bytes[1..])?.0)
-                } else {
-                    None
-                };
-
-                Ok(ServerPayload::Login(LoginAckPacket { status, error_message }))
-            }
-            Healthcheck => {
-                let kind = HealthKind::deserialize_byte(bytes[0])?;
-                Ok(ServerPayload::Health(HealthCheckPacket { kind }))
-            }
-            ChannelList => {
-                let status = Status::deserialize_byte(bytes[0])?;
-                let channels_count = u16::from_be_bytes(bytes[1..3].try_into()?) as usize;
-
-                let mut byte_index = 3;
-                let mut channel_ids = Vec::with_capacity(channels_count);
-                for _ in 0..channels_count {
-                    let channel_id = u64::from_be_bytes(bytes[byte_index..byte_index + 8].try_into()?);
-                    channel_ids.push(channel_id);
-                    byte_index += 8;
-                }
-
-                let error_message = if status == Status::Failed {
-                    Some(String::deserialize(&bytes[1..])?.0)
-                } else {
-                    None
-                };
-
-                Ok(ServerPayload::ChannelsList(ChannelsListPacket {
-                    status,
-                    channel_ids,
-                    error_message,
-                }))
-            }
-            Channels => {
-                let status = Status::deserialize_byte(bytes[0])?;
-                let channels_count = u16::from_be_bytes(bytes[1..3].try_into()?) as usize;
-
-                let mut channels = Vec::with_capacity(channels_count);
-
-                let mut byte_index = 3;
-                for _ in 0..channels_count {
-                    let (channel, read_bytes) = Channel::deserialize(&bytes[byte_index..])?;
-                    channels.push(channel);
-                    byte_index += read_bytes;
-                }
-
-                let error_message = if status == Status::Failed {
-                    Some(String::deserialize(&bytes[1..])?.0)
-                } else {
-                    None
-                };
-
-                Ok(ServerPayload::Channels(GetChannelsResponsePacket {
-                    status,
-                    channels,
-                    error_message,
-                }))
-            }
-            UserStatuses => {
-                let status = Status::deserialize_byte(bytes[0])?;
-                let user_count = u16::from_be_bytes(bytes[1..3].try_into()?) as usize;
-
-                let mut user_statuses = Vec::with_capacity(user_count);
-
-                let mut byte_index = 3;
-                for _ in 0..user_count {
-                    let user_id = u64::from_be_bytes(bytes[byte_index..byte_index + 8].try_into()?);
-                    byte_index += 8;
-                    let (user_status, _) = UserStatus::deserialize(&bytes[byte_index..byte_index + 1])?;
-                    byte_index += 1;
-                    user_statuses.push((user_id, user_status));
-                }
-
-                let error_message = if status == Status::Failed {
-                    Some(String::deserialize(&bytes[1..])?.0)
-                } else {
-                    None
-                };
-
-                Ok(ServerPayload::UserStatuses(UserStatusesPacket {
-                    status,
-                    users: user_statuses,
-                    error_message,
-                }))
-            }
-            Users => {
-                let status = Status::deserialize_byte(bytes[0])?;
-                let user_count = u8::from_be_bytes(bytes[1..2].try_into()?) as usize;
-
-                let mut users = Vec::with_capacity(user_count);
-
-                let mut byte_index = 2;
-                for _ in 0..user_count {
-                    let (user, read_bytes) = UserData::deserialize(&bytes[byte_index..])?;
-                    users.push(user);
-                    byte_index += read_bytes;
-                }
-
-                let error_message = if status == Status::Failed {
-                    Some(String::deserialize(&bytes[1..])?.0)
-                } else {
-                    None
-                };
-
-                Ok(ServerPayload::Users(UsersPacket {
-                    status,
-                    users,
-                    error_message,
-                }))
-            }
-            History => {
-                let status = Status::deserialize_byte(bytes[0])?;
-                let message_count = u8::from_be_bytes(bytes[1..2].try_into()?) as usize;
-
-                let mut messages = Vec::with_capacity(message_count);
-
-                let mut byte_index = 2;
-                for _ in 0..message_count {
-                    let (user, read_bytes) = HistoryMessage::deserialize(&bytes[byte_index..])?;
-                    messages.push(user);
-                    byte_index += read_bytes;
-                }
-
-                let error_message = if status == Status::Failed {
-                    Some(String::deserialize(&bytes[1..])?.0)
-                } else {
-                    None
-                };
-
-                Ok(ServerPayload::History(HistoryPacket {
-                    status,
-                    messages,
-                    error_message,
-                }))
-            }
-            SendMessageAck => {
-                let status = Status::deserialize_byte(bytes[0])?;
-
-                let message_id = u64::from_be_bytes(bytes[1..9].try_into()?);
-
-                let error_message = if status == Status::Failed {
-                    Some(String::deserialize(&bytes[1..])?.0)
-                } else {
-                    None
-                };
-
-                Ok(ServerPayload::SendMessageAck(SendMessageAckPacket {
-                    status,
-                    message_id,
-                    error_message,
-                }))
-            }
+            LoginAck => deserialize_variant!(bytes, ServerPayload::Login, LoginAckPacket),
+            Healthcheck => deserialize_variant!(bytes, ServerPayload::Health, HealthCheckPacket),
+            SendMessageAck => deserialize_variant!(bytes, ServerPayload::SendMessageAck, SendMessageAckPacket),
+            ChannelList => deserialize_variant!(bytes, ServerPayload::ChannelsList, ChannelsListPacket),
+            Channels => deserialize_variant!(bytes, ServerPayload::Channels, GetChannelsResponsePacket),
+            History => deserialize_variant!(bytes, ServerPayload::History, HistoryPacket),
+            UserStatuses => deserialize_variant!(bytes, ServerPayload::UserStatuses, UserStatusesPacket),
+            Users => deserialize_variant!(bytes, ServerPayload::Users, UsersPacket),
         }
     }
 }
@@ -261,7 +125,7 @@ pub enum HealthKind {
 }
 
 impl DeserializeByte for HealthKind {
-    fn deserialize_byte(byte: u8) -> Result<(Self)> {
+    fn deserialize_byte(byte: u8) -> Result<Self> {
         match byte {
             0x00 => Ok(HealthKind::Ping),
             0x01 => Ok(HealthKind::Pong),
@@ -275,10 +139,27 @@ pub struct HealthCheckPacket {
     pub kind: HealthKind,
 }
 
+impl Deserialize for HealthCheckPacket {
+    fn deserialize(bytes: &[u8]) -> Result<(Self, usize)> {
+        let kind = HealthKind::deserialize_byte(bytes[0])?;
+        Ok((HealthCheckPacket { kind }, 1))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct LoginAckPacket {
     pub status: Status,
     pub error_message: Option<String>,
+}
+
+impl Deserialize for LoginAckPacket {
+    fn deserialize(bytes: &[u8]) -> Result<(Self, usize)> {
+        let status = Status::deserialize_byte(bytes[0])?;
+        let mut byte_index = 1;
+        let (error_message, error_len) = deserialize_error(bytes, &status)?;
+        byte_index += error_len;
+        Ok((LoginAckPacket { status, error_message }, byte_index))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -286,6 +167,27 @@ pub struct SendMessageAckPacket {
     pub status: Status,
     pub message_id: u64,
     pub error_message: Option<String>,
+}
+
+impl Deserialize for SendMessageAckPacket {
+    fn deserialize(bytes: &[u8]) -> Result<(Self, usize)> {
+        let status = Status::deserialize_byte(bytes[0])?;
+        let mut byte_index = 1;
+
+        let message_id = u64::from_be_bytes(bytes[1..9].try_into()?);
+        byte_index += 8;
+
+        let (error_message, error_len) = deserialize_error(bytes, &status)?;
+        byte_index += error_len;
+        Ok((
+            SendMessageAckPacket {
+                status,
+                message_id,
+                error_message,
+            },
+            byte_index,
+        ))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -302,11 +204,65 @@ pub struct ChannelsListPacket {
     pub error_message: Option<String>,
 }
 
+impl Deserialize for ChannelsListPacket {
+    fn deserialize(bytes: &[u8]) -> Result<(Self, usize)> {
+        let status = Status::deserialize_byte(bytes[0])?;
+
+        let channels_count = u16::from_be_bytes(bytes[1..3].try_into()?) as usize;
+        let mut channel_ids = Vec::with_capacity(channels_count);
+
+        let mut byte_index = 3;
+        for _ in 0..channels_count {
+            let channel_id = u64::from_be_bytes(bytes[byte_index..byte_index + 8].try_into()?);
+            channel_ids.push(channel_id);
+            byte_index += 8;
+        }
+
+        let (error_message, error_len) = deserialize_error(bytes, &status)?;
+        byte_index += error_len;
+        Ok((
+            ChannelsListPacket {
+                status,
+                channel_ids,
+                error_message,
+            },
+            byte_index,
+        ))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct GetChannelsResponsePacket {
     pub status: Status,
     pub channels: Vec<Channel>,
     pub error_message: Option<String>,
+}
+
+impl Deserialize for GetChannelsResponsePacket {
+    fn deserialize(bytes: &[u8]) -> Result<(Self, usize)> {
+        let status = Status::deserialize_byte(bytes[0])?;
+
+        let channel_count = u16::from_be_bytes(bytes[1..3].try_into()?) as usize;
+        let mut channels = Vec::with_capacity(channel_count);
+
+        let mut byte_index = 3;
+        for _ in 0..channel_count {
+            let (channel, read_bytes) = Channel::deserialize(&bytes[byte_index..])?;
+            channels.push(channel);
+            byte_index += read_bytes;
+        }
+
+        let (error_message, error_len) = deserialize_error(bytes, &status)?;
+        byte_index += error_len;
+        Ok((
+            GetChannelsResponsePacket {
+                status,
+                channels,
+                error_message,
+            },
+            byte_index,
+        ))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -315,6 +271,32 @@ pub struct UsersPacket {
     pub users: Vec<UserData>,
     pub error_message: Option<String>,
 }
+impl Deserialize for UsersPacket {
+    fn deserialize(bytes: &[u8]) -> Result<(Self, usize)> {
+        let status = Status::deserialize_byte(bytes[0])?;
+
+        let user_count = u8::from_be_bytes(bytes[1..2].try_into()?) as usize;
+        let mut users = Vec::with_capacity(user_count);
+
+        let mut byte_index = 2;
+        for _ in 0..user_count {
+            let (user, read_bytes) = UserData::deserialize(&bytes[byte_index..])?;
+            users.push(user);
+            byte_index += read_bytes;
+        }
+
+        let (error_message, error_len) = deserialize_error(bytes, &status)?;
+        byte_index += error_len;
+        Ok((
+            UsersPacket {
+                status,
+                users,
+                error_message,
+            },
+            byte_index,
+        ))
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct HistoryPacket {
@@ -322,11 +304,67 @@ pub struct HistoryPacket {
     pub messages: Vec<HistoryMessage>,
     pub error_message: Option<String>,
 }
+
+impl Deserialize for HistoryPacket {
+    fn deserialize(bytes: &[u8]) -> Result<(Self, usize)> {
+        let status = Status::deserialize_byte(bytes[0])?;
+
+        let message_count = u8::from_be_bytes(bytes[1..2].try_into()?) as usize;
+        let mut messages = Vec::with_capacity(message_count);
+
+        let mut byte_index = 2;
+        for _ in 0..message_count {
+            let (user, read_bytes) = HistoryMessage::deserialize(&bytes[byte_index..])?;
+            messages.push(user);
+            byte_index += read_bytes;
+        }
+        let (error_message, error_len) = deserialize_error(bytes, &status)?;
+        byte_index += error_len;
+        Ok((
+            HistoryPacket {
+                status,
+                messages,
+                error_message,
+            },
+            byte_index,
+        ))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct UserStatusesPacket {
     pub status: Status,
     pub users: Vec<(u64, UserStatus)>,
     pub error_message: Option<String>,
+}
+
+impl Deserialize for UserStatusesPacket {
+    fn deserialize(bytes: &[u8]) -> Result<(Self, usize)> {
+        let status = Status::deserialize_byte(bytes[0])?;
+
+        let user_count = u16::from_be_bytes(bytes[1..3].try_into()?) as usize;
+        let mut users = Vec::with_capacity(user_count);
+
+        let mut byte_index = 3;
+        for _ in 0..user_count {
+            let user_id = u64::from_be_bytes(bytes[byte_index..byte_index + 8].try_into()?);
+            byte_index += 8;
+            let (user_status, _) = UserStatus::deserialize(&bytes[byte_index..byte_index + 1])?;
+            byte_index += 1;
+            users.push((user_id, user_status));
+        }
+
+        let (error_message, error_len) = deserialize_error(bytes, &status)?;
+        byte_index += error_len;
+        Ok((
+            UserStatusesPacket {
+                status,
+                users,
+                error_message,
+            },
+            byte_index,
+        ))
+    }
 }
 
 #[derive(Debug, Clone)]

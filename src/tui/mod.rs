@@ -5,24 +5,20 @@ pub mod logs;
 pub mod ui;
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::time::Duration;
 
 use anyhow::{Ok, Result, anyhow};
 use async_trait::async_trait;
-use chrono::{DateTime, Days, NaiveDateTime, Utc};
+use chrono::{DateTime, Days, Utc};
 use crossterm::event::{Event, KeyCode, KeyModifiers};
-use log::{debug, error, info, warn};
+use log::{debug, error};
 use ratatui::Frame;
 use tokio::sync::mpsc::{self, Sender};
-use tokio::sync::watch::error;
-use tokio::time::sleep;
 
-use crate::cli::{AppConfig, CliArgs};
-use crate::network::client::{self, Client};
-use crate::network::protocol::UserStatus;
-use crate::tui::chat::{ChannelId, ChannelStatus, ChatMessage, ChatMessageStatus, CurrentUser, DisplayChannel, User};
+use crate::cli::AppConfig;
+use crate::network::client::Client;
+use crate::tui::chat::{ChannelId, ChatMessage, ChatMessageStatus, DisplayChannel, User};
 use crate::tui::events::TuiEvent;
-use crate::tui::framework::{FromLog, Tui, TuiRunner};
+use crate::tui::framework::{Tui, TuiRunner};
 use crate::tui::logs::LogEntry;
 use crate::tui::ui::draw;
 
@@ -251,7 +247,7 @@ impl Tui<TuiEvent> for State {
 
                     self.chat_history.entry(channel_id).and_modify(|log| log.push(message));
 
-                    client.send_chat_message(channel_id, 0, self.chat_input.clone(), vec![]).await; // TODO improve
+                    client.send_chat_message(channel_id, 0, self.chat_input.clone(), vec![]).await?; // TODO improve
                     self.focus = Focus::ChatInput(0);
                     self.chat_input = " ".to_owned();
                 } else {
@@ -296,7 +292,7 @@ impl Tui<TuiEvent> for State {
                 client.connect(address).await?;
                 client.login(username.clone(), password.clone()).await?;
                 self.server_connection_state = ServerState::Connected;
-                event_send.send(TuiEvent::SetUserNamePassword(username, password)).await;
+                event_send.send(TuiEvent::SetUserNamePassword(username, password)).await?;
                 self.server_address = Some(address);
             }
             LoggedIn => {
@@ -346,7 +342,7 @@ impl Tui<TuiEvent> for State {
                 }
                 if !users_not_found.is_empty() {
                     debug!("New users added, requesting names of users ids {users_not_found:?}");
-                    client.request_users(users_not_found).await;
+                    client.request_users(users_not_found).await?;
                 }
             }
             Users(users) => {
@@ -405,7 +401,7 @@ impl Tui<TuiEvent> for State {
                 if let Some(message) = self
                     .chat_history
                     .iter_mut()
-                    .find_map(|(channel_id, messages)| messages.iter_mut().find(|m| m.message_id == Some(message_id)))
+                    .find_map(|(_, messages)| messages.iter_mut().find(|m| m.message_id == Some(message_id)))
                 {
                     // Update the message status
                     message.status = ChatMessageStatus::Send;
@@ -446,7 +442,7 @@ impl Tui<TuiEvent> for State {
 pub async fn run(config: AppConfig) -> Result<()> {
     let (event_send, event_recv) = mpsc::channel::<TuiEvent>(10);
 
-    let mut client = Client::new(event_send.clone());
+    let client = Client::new(event_send.clone());
 
     let username = config.username.clone();
     let password = config.password.clone();

@@ -3,7 +3,6 @@ mod network;
 mod tui;
 use anyhow::Result;
 use clap::Parser;
-use log::info;
 
 use crate::cli::{AppConfig, CliArgs};
 

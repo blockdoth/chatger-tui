@@ -1,9 +1,5 @@
-use anyhow::{Result, anyhow};
-use log::info;
-
-use crate::network::client::MAX_MESSAGE_LENGTH;
 use crate::network::protocol::header::Payload;
-use crate::network::protocol::server::{HealthCheckPacket, HealthKind, UsersPacket};
+use crate::network::protocol::server::{HealthCheckPacket, HealthKind};
 use crate::network::protocol::{MediaType, UserStatus};
 
 pub trait Serialize {

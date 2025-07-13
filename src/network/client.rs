@@ -1,32 +1,24 @@
 use std::net::SocketAddr;
-use std::pin::Pin;
 use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
-use clap::Error;
-use clap::builder::Str;
-use futures::lock;
 use log::{debug, error, info};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
-use tokio::sync::mpsc::{self, Receiver, Sender};
-use tokio::sync::{Mutex, oneshot};
-use tokio::task::JoinHandle;
-use tokio::time::{Duration, sleep};
+use tokio::sync::Mutex;
+use tokio::sync::mpsc::Sender;
 
 use crate::network::handle_message;
 use crate::network::protocol::client::{
     Anchor, ClientPacketType, ClientPayload, GetChannelsPacket, GetHistoryPacket, GetUsersPacket, LoginPacket, SendMessagePacket, Serialize,
 };
 use crate::network::protocol::header::{Header, PacketType};
-use crate::network::protocol::server::{Deserialize, HealthCheckPacket, HealthKind, ServerPacketType, ServerPayload, Status};
-use crate::tui::chat::ChatMessage;
+use crate::network::protocol::server::{Deserialize, ServerPayload};
 use crate::tui::events::TuiEvent;
-use crate::tui::framework::Tui;
 
-pub const MAX_MESSAGE_LENGTH: usize = 1024; // TODO figure out actual max size
+pub const MAX_MESSAGE_LENGTH: usize = 4096; // TODO figure out actual max size
 
 pub struct Client {
     is_connected: bool,
@@ -48,14 +40,14 @@ impl Client {
         }
 
         let connection = TcpStream::connect(target_addr).await?;
-        let (mut read_stream, write_stream) = connection.into_split();
+        let (read_stream, write_stream) = connection.into_split();
         let write_stream = Arc::new(Mutex::new(write_stream));
         let src_addr = read_stream.local_addr().unwrap();
 
         self.write_stream = Some(write_stream.clone());
         info!("Connected to {target_addr} from {src_addr}");
 
-        self.receiving_task(read_stream, write_stream).await;
+        self.receiving_task(read_stream).await;
         self.event_send.send(TuiEvent::HealthCheck).await?;
         Ok(())
     }
@@ -135,7 +127,7 @@ impl Client {
         .await
     }
 
-    async fn receiving_task(&mut self, mut read_stream: OwnedReadHalf, write_stream: Arc<Mutex<OwnedWriteHalf>>) {
+    async fn receiving_task(&mut self, mut read_stream: OwnedReadHalf) {
         info!("Started receiving task");
         let write_stream = self.write_stream.clone();
         let event_send = self.event_send.clone();
@@ -150,7 +142,8 @@ impl Client {
             };
             loop {
                 match Self::read_message(&mut read_stream, &mut header_buffer, &mut payload_buffer).await {
-                    Ok(payload) => {
+                    Ok((payload, _bytes_read)) => {
+                        // TODO something with bytes read
                         if let Err(e) = handle_message(payload, &mut stream, event_send.clone()).await {
                             error!("Error while handling message: {e:?}");
                         }
@@ -189,7 +182,7 @@ impl Client {
         Ok(())
     }
 
-    pub async fn read_message(stream: &mut OwnedReadHalf, header_buffer: &mut [u8], payload_buffer: &mut [u8]) -> Result<ServerPayload> {
+    pub async fn read_message(stream: &mut OwnedReadHalf, header_buffer: &mut [u8], payload_buffer: &mut [u8]) -> Result<(ServerPayload, usize)> {
         stream.read_exact(&mut header_buffer[..]).await?;
 
         debug!("Received header bytes {header_buffer:?}");
@@ -197,6 +190,9 @@ impl Client {
         debug!("Received {header:?}");
 
         let payload_size = header.length;
+        if (payload_size + 10) as usize > MAX_MESSAGE_LENGTH {
+            return Err(anyhow!("Max message length exceeded to large for packet {:?}", header.packet_type));
+        }
         debug!("Waiting to read payload of size {payload_size}");
         stream.read_exact(&mut payload_buffer[0..payload_size as usize]).await?;
         debug!("{payload_size} bytes read");

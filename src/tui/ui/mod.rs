@@ -1,10 +1,6 @@
 mod borders;
 
-use std::default;
-use std::fmt::format;
-
 use chrono::{Duration, Utc};
-use futures::channel;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -179,7 +175,6 @@ fn render_profile(state: &State, frame: &mut Frame, area: Rect) {
 
     let lines = vec![Line::from(Span::from("")), Line::from(current_user)];
 
-    let border_style = Style::default();
     let widget = Paragraph::new(Text::from(lines)).block(
         Block::default()
             .padding(PADDING)
@@ -200,7 +195,6 @@ fn render_server_status(state: &State, frame: &mut Frame, area: Rect) {
 
     let lines = vec![Line::from(Span::from("")), Line::from(connection_status)];
 
-    let border_style = Style::default();
     let widget = Paragraph::new(Text::from(lines)).block(
         Block::default()
             .padding(PADDING)
@@ -212,12 +206,6 @@ fn render_server_status(state: &State, frame: &mut Frame, area: Rect) {
 }
 
 fn render_chat_history(state: &State, frame: &mut Frame, area: Rect) {
-    let border_corners = border::Set {
-        top_left: line::NORMAL.horizontal_down,
-        top_right: line::NORMAL.horizontal_down,
-        ..border::PLAIN
-    };
-
     // TODO make less ugly
     let empty = &vec![];
 
@@ -297,14 +285,6 @@ fn render_chat_history(state: &State, frame: &mut Frame, area: Rect) {
 }
 
 fn render_chat_input(state: &State, frame: &mut Frame, area: Rect) {
-    let border_corners = border::Set {
-        top_left: line::NORMAL.vertical_right,
-        top_right: line::NORMAL.vertical_left,
-        bottom_left: line::NORMAL.horizontal_up,
-        bottom_right: line::NORMAL.horizontal_up,
-        ..border::PLAIN
-    };
-
     let input_text: Vec<Span> = match state.focus {
         Focus::ChatInput(_) => state
             .chat_input
@@ -374,12 +354,6 @@ fn render_users(state: &State, frame: &mut Frame, area: Rect) {
             ])
         })
         .collect();
-
-    let border_corners = border::Set {
-        bottom_left: line::NORMAL.horizontal_up,
-        bottom_right: line::NORMAL.vertical_left,
-        ..border::PLAIN
-    };
 
     let (borders, border_style, border_corners) = borders_users(state);
 

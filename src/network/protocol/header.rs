@@ -73,7 +73,7 @@ pub enum PacketType {
 }
 
 impl DeserializeByte for PacketType {
-    fn deserialize_byte(byte: u8) -> Result<(Self)> {
+    fn deserialize_byte(byte: u8) -> Result<Self> {
         // high bit (0x80) indicates Client
         if byte & 0x80 == 0 {
             let packet_type = ServerPacketType::deserialize_byte(byte)?; // Ugly
@@ -86,13 +86,10 @@ impl DeserializeByte for PacketType {
 
 impl Serialize for PacketType {
     fn serialize(self) -> Vec<u8> {
+        use PacketType::*;
         match self {
-            PacketType::Client(packet) => {
-                vec![packet as u8]
-            }
-            PacketType::Server(packet) => {
-                panic!("Client attempted to send server packet")
-            }
+            Client(packet_type) => vec![packet_type as u8],
+            Server(packet_type) => panic!("Client attempted to send server packet of type {packet_type:?}"),
         }
     }
 }
@@ -116,7 +113,7 @@ pub enum PacketVersion {
 }
 
 impl DeserializeByte for PacketVersion {
-    fn deserialize_byte(byte: u8) -> Result<(Self)> {
+    fn deserialize_byte(byte: u8) -> Result<Self> {
         match byte {
             0x01 => Ok(PacketVersion::V1),
             other => Err(anyhow!("Unknown PacketVersion value: {:#04x}", other)),

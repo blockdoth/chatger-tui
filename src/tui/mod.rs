@@ -16,8 +16,8 @@ use tokio::sync::mpsc::{self, Sender};
 
 use crate::cli::AppConfig;
 use crate::network::client::Client;
-use crate::tui::chat::{ChannelId, ChatMessage, ChatMessageStatus, DisplayChannel, User};
-use crate::tui::events::TuiEvent;
+use crate::tui::chat::{ChatMessage, ChatMessageStatus, DisplayChannel, MediaMessage, User};
+use crate::tui::events::{ChannelId, TuiEvent};
 use crate::tui::framework::{Tui, TuiRunner};
 use crate::tui::logs::LogEntry;
 use crate::tui::ui::draw;
@@ -409,7 +409,18 @@ impl Tui<TuiEvent> for State {
                     debug!("Message with id {message_id} not found in chat history");
                 }
             }
-
+            MessageMediaAck(media_id) => {
+                todo!()
+            }
+            Media(media_message) => {
+                todo!()
+            }
+            Typing(channel_id, user_id, is_typing) => {
+                todo!()
+            }
+            UserStatusUpdate(user_id, status) => {
+                todo!()
+            }
             Disconnected => {
                 self.server_connection_state = ServerState::Disconnected;
                 error!("TOOD reconnect logic");

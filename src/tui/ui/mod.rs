@@ -4,7 +4,6 @@ use chrono::{Duration, Utc};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::symbols::{border, line};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Padding, Paragraph, Wrap};
 
@@ -50,7 +49,7 @@ pub fn draw(state: &State, frame: &mut Frame) {
     render_info(state, frame, info_area);
 }
 
-fn split_app_info_areas(state: &State, area: Rect) -> (Rect, Rect) {
+fn split_app_info_areas(_state: &State, area: Rect) -> (Rect, Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(0)
@@ -75,7 +74,7 @@ fn split_channel_chat_user_areas(state: &State, area: Rect) -> (Rect, Rect, Rect
     (chunks[0], chunks[1], chunks[2])
 }
 
-fn split_channels_profile_areas(state: &State, area: Rect) -> (Rect, Rect) {
+fn split_channels_profile_areas(_state: &State, area: Rect) -> (Rect, Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(0)
@@ -84,7 +83,7 @@ fn split_channels_profile_areas(state: &State, area: Rect) -> (Rect, Rect) {
     (chunks[0], chunks[1])
 }
 
-fn split_users_server_areas(state: &State, area: Rect) -> (Rect, Rect) {
+fn split_users_server_areas(_state: &State, area: Rect) -> (Rect, Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(0)

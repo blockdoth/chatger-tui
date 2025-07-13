@@ -1,9 +1,18 @@
 use std::net::SocketAddr;
 
-use crate::network::protocol::{Channel, HistoryMessage, UserData, UserStatus};
+use crate::network::protocol::UserStatus;
+use crate::network::protocol::server::{Channel, HistoryMessage, UserData};
 use crate::tui::Focus;
+use crate::tui::chat::MediaMessage;
 use crate::tui::framework::FromLog;
 use crate::tui::logs::LogEntry;
+
+pub type UserId = u64;
+pub type ChannelId = u64;
+pub type MessageId = u64;
+pub type MediaId = u64;
+pub type ProfilePicId = u64;
+pub type IconId = u64;
 
 #[derive(Debug)]
 pub enum TuiEvent {
@@ -25,14 +34,18 @@ pub enum TuiEvent {
     SetUserNamePassword(String, String),
     Disconnected,
     Channels(Vec<Channel>),
-    ChannelIDs(Vec<u64>),
+    ChannelIDs(Vec<ChannelId>),
     ScrollUp,
     ScrollDown,
     ConnectAndLogin(SocketAddr, String, String),
-    UserStatusesUpdate(Vec<(u64, UserStatus)>),
+    UserStatusesUpdate(Vec<(UserId, UserStatus)>),
+    UserStatusUpdate(UserId, UserStatus),
     Users(Vec<UserData>),
     HistoryUpdate(Vec<HistoryMessage>),
-    MessageSendAck(u64),
+    MessageSendAck(MessageId),
+    MessageMediaAck(MediaId),
+    Media(MediaMessage),
+    Typing(ChannelId, UserId, bool),
 }
 
 impl FromLog for TuiEvent {

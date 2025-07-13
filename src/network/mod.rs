@@ -8,14 +8,16 @@ use tokio::sync::mpsc::Sender;
 
 use crate::network::client::Client;
 use crate::network::protocol::client::{ClientPacketType, ClientPayload};
-use crate::network::protocol::server::{HealthCheckPacket, HealthKind, ServerPayload, Status};
+use crate::network::protocol::server::{HealthCheckPacket, HealthKind, ReturnStatus, ServerPayload};
+use crate::tui::chat::MediaMessage;
 use crate::tui::events::TuiEvent;
 pub mod client;
 pub mod protocol;
 
 pub async fn handle_message(payload: ServerPayload, stream: &mut Arc<Mutex<OwnedWriteHalf>>, event_send: Sender<TuiEvent>) -> Result<()> {
     use ServerPayload::*;
-    use Status::*;
+
+    use self::ReturnStatus::*;
 
     match payload {
         Health(packet) => match packet.kind {
@@ -102,8 +104,7 @@ pub async fn handle_message(payload: ServerPayload, stream: &mut Arc<Mutex<Owned
         },
         SendMediaAck(packet) => match packet.status {
             Success => {
-                todo!();
-                // event_send.send(TuiEvent::MessageSendAck(packet.message_id)).await?;
+                event_send.send(TuiEvent::MessageMediaAck(packet.media_id)).await?;
                 Ok(())
             }
             Failed => {
@@ -115,5 +116,35 @@ pub async fn handle_message(payload: ServerPayload, stream: &mut Arc<Mutex<Owned
                 Ok(())
             }
         },
+        Media(packet) => match packet.status {
+            Success => {
+                event_send
+                    .send(TuiEvent::Media(MediaMessage {
+                        filename: packet.filename,
+                        media_type: packet.media_type,
+                        media_data: packet.media_data,
+                    }))
+                    .await?;
+                Ok(())
+            }
+            Failed => {
+                error!("Failed to send media {:?}", packet.error_message);
+                Ok(())
+            }
+            Notification => {
+                info!("Got message notification from server TODO handle");
+                Ok(())
+            }
+        },
+        Typing(packet) => {
+            event_send
+                .send(TuiEvent::Typing(packet.channel_id, packet.user_id, packet.is_typing))
+                .await?;
+            Ok(())
+        }
+        Status(packet) => {
+            event_send.send(TuiEvent::UserStatusUpdate(packet.user_id, packet.status)).await?;
+            Ok(())
+        }
     }
 }

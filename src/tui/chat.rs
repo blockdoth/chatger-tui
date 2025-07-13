@@ -1,8 +1,8 @@
 use chrono::{DateTime, Utc};
 
-use crate::network::protocol::{Channel, UserStatus};
-
-pub type ChannelId = u64;
+use crate::network::protocol::server::Channel;
+use crate::network::protocol::{MediaType, UserStatus};
+use crate::tui::events::ChannelId;
 
 pub struct DisplayChannel {
     pub id: ChannelId,
@@ -38,11 +38,6 @@ pub struct User {
     pub status: UserStatus,
 }
 
-pub struct CurrentUser {
-    pub id: u64,
-    pub name: String,
-}
-
 #[derive(Debug)]
 pub enum ChatMessageStatus {
     Sending,
@@ -53,4 +48,11 @@ pub enum ChannelStatus {
     Read,
     Unread,
     Muted,
+}
+
+#[derive(Debug)]
+pub struct MediaMessage {
+    pub filename: String,
+    pub media_type: MediaType,
+    pub media_data: Vec<u8>,
 }

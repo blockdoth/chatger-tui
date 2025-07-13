@@ -1,6 +1,6 @@
-use crate::network::protocol::header::Payload;
 use crate::network::protocol::server::{HealthCheckPacket, HealthKind};
 use crate::network::protocol::{MediaType, UserStatus};
+use crate::tui::events::{ChannelId, MediaId, MessageId, UserId};
 
 pub trait Serialize {
     fn serialize(self) -> Vec<u8>;
@@ -65,12 +65,6 @@ impl Serialize for ClientPayload {
     }
 }
 
-impl From<ClientPayload> for Payload {
-    fn from(payload: ClientPayload) -> Self {
-        Payload::Client(payload)
-    }
-}
-
 impl Serialize for HealthKind {
     fn serialize(self) -> Vec<u8> {
         vec![self as u8]
@@ -101,7 +95,7 @@ impl Serialize for LoginPacket {
 
 #[derive(Debug, Clone)]
 pub struct GetChannelsPacket {
-    pub channel_ids: Vec<u64>,
+    pub channel_ids: Vec<ChannelId>,
 }
 
 impl Serialize for GetChannelsPacket {
@@ -118,7 +112,7 @@ impl Serialize for GetChannelsPacket {
 
 #[derive(Debug, Clone)]
 pub struct GetUsersPacket {
-    pub user_ids: Vec<u64>,
+    pub user_ids: Vec<UserId>,
 }
 
 impl Serialize for GetUsersPacket {
@@ -150,7 +144,7 @@ impl Serialize for Anchor {
 
 #[derive(Debug, Clone)]
 pub struct GetHistoryPacket {
-    pub channel_id: u64,
+    pub channel_id: ChannelId,
     pub anchor: Anchor,
     pub num_messages_back: i8,
 }
@@ -173,9 +167,9 @@ impl Serialize for GetHistoryPacket {
 
 #[derive(Debug, Clone)]
 pub struct SendMessagePacket {
-    pub channel_id: u64,
-    pub reply_id: u64,
-    pub media_ids: Vec<u64>,
+    pub channel_id: ChannelId,
+    pub reply_id: MessageId,
+    pub media_ids: Vec<MediaId>,
     pub message_text: String,
 }
 
@@ -198,7 +192,7 @@ impl Serialize for SendMessagePacket {
 
 #[derive(Debug, Clone)]
 pub struct GetMediaPacket {
-    pub media_id: u64,
+    pub media_id: MediaId,
 }
 
 impl Serialize for GetMediaPacket {
@@ -234,7 +228,7 @@ impl Serialize for SendMediaPacket {
 #[derive(Debug, Clone)]
 pub struct TypingPacket {
     pub is_typing: bool,
-    pub channel_id: u64,
+    pub channel_id: ChannelId,
 }
 
 impl Serialize for TypingPacket {

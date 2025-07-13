@@ -1,13 +1,7 @@
 use anyhow::{Result, anyhow};
 
-use crate::network::protocol::client::{ClientPacketType, ClientPayload, Serialize};
-use crate::network::protocol::server::{Deserialize, DeserializeByte, ServerPacketType, ServerPayload};
-
-#[derive(Debug, Clone)]
-pub enum Payload {
-    Client(ClientPayload),
-    Server(ServerPayload),
-}
+use crate::network::protocol::client::{ClientPacketType, Serialize};
+use crate::network::protocol::server::{Deserialize, DeserializeByte, ServerPacketType};
 
 #[derive(Debug)]
 pub struct Header {
@@ -31,10 +25,10 @@ impl Header {
 impl Serialize for Header {
     fn serialize(self) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(10);
-        bytes.extend_from_slice(&self.magic_number); // 4 bytes
-        bytes.push(self.version.clone() as u8); // 1 byte
-        bytes.extend(self.packet_type.serialize()); // 1 byte
-        bytes.extend_from_slice(&self.length.to_be_bytes()); // 4 bytes (assumed big endian)
+        bytes.extend_from_slice(&self.magic_number);
+        bytes.push(self.version.clone() as u8);
+        bytes.extend(self.packet_type.serialize());
+        bytes.extend_from_slice(&self.length.to_be_bytes());
         bytes
     }
 }

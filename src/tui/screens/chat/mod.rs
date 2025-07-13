@@ -9,7 +9,7 @@ use ratatui::widgets::{Block, Borders, Padding, Paragraph, Wrap};
 
 use crate::network::protocol::UserStatus;
 use crate::tui::chat::{ChannelStatus, ChatMessageStatus};
-use crate::tui::ui::borders::{
+use crate::tui::screens::chat::borders::{
     borders_channel, borders_chat_history, borders_input, borders_logs, borders_profile, borders_server_status, borders_users,
 };
 use crate::tui::{Focus, State};
@@ -24,7 +24,7 @@ const HEADER_STYLE: Style = Style {
 
 const PADDING: Padding = Padding::new(1, 1, 0, 0);
 
-pub fn draw(state: &State, frame: &mut Frame) {
+pub fn draw_main(state: &State, frame: &mut Frame) {
     let main_area = frame.area();
     let (app_area, info_area) = split_app_info_areas(state, main_area);
     let (channels_area, chat_area, users_area) = split_channel_chat_user_areas(state, app_area);

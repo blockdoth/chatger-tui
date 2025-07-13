@@ -2,7 +2,7 @@ pub mod chat;
 pub mod events;
 pub mod framework;
 pub mod logs;
-pub mod ui;
+pub mod screens;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 
@@ -20,7 +20,8 @@ use crate::tui::chat::{ChatMessage, ChatMessageStatus, DisplayChannel, MediaMess
 use crate::tui::events::{ChannelId, TuiEvent};
 use crate::tui::framework::{Tui, TuiRunner};
 use crate::tui::logs::LogEntry;
-use crate::tui::ui::draw;
+use crate::tui::screens::chat::draw_main;
+use crate::tui::screens::login::draw_login;
 
 pub struct UserProfile {
     id: u64,
@@ -39,9 +40,15 @@ pub enum Focus {
 }
 
 #[derive(Debug, PartialEq)]
+pub enum Screen {
+    Main,
+    Login,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum ServerState {
     Connected,
-    Unhealhty,
+    Unhealthy,
     Disconnected,
     Reconnecting,
 }
@@ -55,6 +62,7 @@ pub struct State {
     chat_input: String,
     active_channel_idx: usize,
     focus: Focus,
+    screen: Screen,
     current_user: Option<UserProfile>,
     last_healthcheck: DateTime<Utc>,
     show_logs: bool,
@@ -77,6 +85,7 @@ impl State {
             server_connection_state: ServerState::Disconnected,
             server_address: None,
             focus: Focus::Channels,
+            screen: Screen::Login,
             current_user: None,
             channels: vec![],
             users: vec![],
@@ -90,7 +99,10 @@ impl State {
 impl Tui<TuiEvent> for State {
     /// Draws the UI layout and content.
     fn draw_ui(&self, frame: &mut Frame) {
-        draw(self, frame);
+        match self.screen {
+            Screen::Main => draw_main(self, frame),
+            Screen::Login => draw_login(self, frame),
+        }
     }
 
     fn process_event(&self, event: Event) -> Option<TuiEvent> {

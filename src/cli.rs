@@ -7,23 +7,23 @@ use log::LevelFilter;
 #[derive(Parser, Debug)]
 #[command(name = "chatger", version = "1.0", author = "blockdoth", about = "A chatger TUI client")]
 pub struct CliArgs {
-    /// Server address to connect to
-    #[arg(long, default_value = "127.0.0.1:8080")]
+    /// Server address of chatger server to connect to
+    #[arg(long, default_value = "0.0.0.0:4348")]
     pub address: String,
 
-    /// Username for login
+    /// Username
     #[arg(long, default_value = "penger")]
     pub username: String,
 
-    /// Password for login
-    #[arg(long, default_value = "epicpass4")]
+    /// Password
+    #[arg(long, default_value = "password6")]
     pub password: String,
 
     /// Log level (error, warn, info, debug, trace)
     #[arg(long, default_value_t = LevelFilter::Debug)]
     pub loglevel: LevelFilter,
 
-    /// Skip login screen
+    /// Automatically login
     #[arg(long, default_value_t = false)]
     pub auto_login: bool,
 }

@@ -1,7 +1,7 @@
 pub mod keys;
 pub mod ui;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io::{self, ErrorKind};
 use std::net::SocketAddr;
 
@@ -164,7 +164,7 @@ pub async fn handle_login_event(tui: &mut State, event: TuiEvent, event_send: &S
                         channels: vec![],
                         users: vec![],
                         chat_history: HashMap::new(),
-                        chat_input: " ".to_owned(),
+                        chat_inputs: HashMap::new(),
                         active_channel_idx: 0,
                         current_user: UserProfile {
                             user_id,
@@ -175,6 +175,8 @@ pub async fn handle_login_event(tui: &mut State, event: TuiEvent, event_send: &S
                         last_healthcheck: Utc::now(),
                         server_connection_state: ServerState::Connected,
                         server_address,
+                        waiting_message_acks_id: VecDeque::new(),
+                        incrementing_ack_id: 100000, // TODO better value
                     });
                 };
             } else {

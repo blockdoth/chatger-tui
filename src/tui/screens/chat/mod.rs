@@ -2,7 +2,7 @@ pub mod borders;
 pub mod keys;
 pub mod ui;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::net::SocketAddr;
 
 use anyhow::{Result, anyhow};
@@ -12,7 +12,7 @@ use tokio::sync::mpsc::Sender;
 
 use crate::network::client::Client;
 use crate::tui::chat::{ChatMessage, ChatMessageStatus, DisplayChannel, User};
-use crate::tui::events::{ChannelId, TuiEvent, UserId};
+use crate::tui::events::{ChannelId, MessageId, TuiEvent, UserId};
 use crate::tui::{AppState, Screen, State};
 
 #[derive(Clone, Debug)]
@@ -21,13 +21,15 @@ pub struct ChatState {
     pub channels: Vec<DisplayChannel>,
     pub users: Vec<User>,
     pub chat_history: HashMap<ChannelId, Vec<ChatMessage>>,
-    pub chat_input: String,
+    pub chat_inputs: HashMap<ChannelId, String>,
     pub active_channel_idx: usize,
     pub current_user: UserProfile,
     pub chat_scroll_offset: usize,
     pub last_healthcheck: DateTime<Utc>,
     pub server_address: SocketAddr,
     pub server_connection_state: ServerState,
+    pub waiting_message_acks_id: VecDeque<MessageId>,
+    pub incrementing_ack_id: MessageId,
 }
 
 #[derive(Clone, Debug)]
@@ -88,7 +90,7 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
         }
         InputRight => {
             if let ChatFocus::ChatInput(i) = chat_state.focus
-                && i + 1 < chat_state.chat_input.len()
+                && i + 1 < chat_state.chat_inputs.len()
             {
                 chat_state.focus = ChatFocus::ChatInput(i + 1)
             }
@@ -96,16 +98,16 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
         InputLeftTab => {
             if let ChatFocus::ChatInput(i) = chat_state.focus
                 && i > 0
+                && let Some(channel_id) = chat_state.channels.get(chat_state.active_channel_idx)
+                && let Some(input_line) = chat_state.chat_inputs.get(&channel_id.id)
             {
-                let idx = chat_state
-                    .chat_input
+                let idx = input_line
                     .char_indices()
                     .take(i)
                     .collect::<Vec<_>>()
                     .into_iter()
                     .rev()
                     .skip_while(|(_, c)| *c != ' ')
-                    // .skip_while(|(_, c)| *c == ' ')
                     .map(|(idx, _)| idx)
                     .next()
                     .unwrap_or(0);
@@ -115,47 +117,87 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
         }
         InputRightTab => {
             if let ChatFocus::ChatInput(i) = chat_state.focus
-                && i + 1 < chat_state.chat_input.len()
+                && i + 1 < chat_state.chat_inputs.len()
+                && let Some(channel_id) = chat_state.channels.get(chat_state.active_channel_idx)
+                && let Some(input_line) = chat_state.chat_inputs.get(&channel_id.id)
             {
-                let idx = chat_state
-                    .chat_input
+                let idx = input_line
                     .char_indices()
                     .skip(i + 1)
                     .skip_while(|(_, c)| *c != ' ')
                     // .skip_while(|(_, c)| *c == ' ')
                     .map(|(idx, _)| idx)
                     .next()
-                    .unwrap_or(chat_state.chat_input.len());
+                    .unwrap_or(chat_state.chat_inputs.len());
                 chat_state.focus = ChatFocus::ChatInput(idx)
             }
         }
         InputDelete => {
             if let ChatFocus::ChatInput(i) = chat_state.focus
                 && i > 0
+                && let Some(channel_id) = chat_state.channels.get(chat_state.active_channel_idx)
+                && let Some(input_line) = chat_state.chat_inputs.get_mut(&channel_id.id)
             {
-                chat_state.chat_input.remove(i - 1);
+                input_line.remove(i - 1);
                 chat_state.focus = ChatFocus::ChatInput(i - 1)
             }
         }
 
-        InputEnter if chat_state.chat_input.len() > 1 => {
-            // command_send.send(Command::SendMessage(tui.chat_input.clone())).await?;
-            let message = ChatMessage {
-                message_id: None,
-                author_name: chat_state.current_user.username.to_owned(),
-                author_id: chat_state.current_user.user_id,
-                reply_id: 0, // TODO replies
-                timestamp: Utc::now(),
-                message: chat_state.chat_input.clone(),
-                status: ChatMessageStatus::Sending,
-            };
-            let channel_id = chat_state.channels.get(chat_state.active_channel_idx).unwrap().id; // TODO better
+        MessageSend => {
+            let channel_id = chat_state
+                .channels
+                .get(chat_state.active_channel_idx)
+                .map(|c| c.id)
+                .ok_or_else(|| anyhow!("channel not found based on index"))?;
 
-            chat_state.chat_history.entry(channel_id).and_modify(|log| log.push(message));
+            let input_line = chat_state
+                .chat_inputs
+                .get_mut(&channel_id)
+                .ok_or_else(|| anyhow!("No input found for channel {}", channel_id))?;
 
-            client.send_chat_message(channel_id, 0, chat_state.chat_input.clone(), vec![]).await?; // TODO improve
-            chat_state.focus = ChatFocus::ChatInput(0);
-            chat_state.chat_input = " ".to_owned();
+            if !input_line.trim().is_empty() {
+                // Don't send empty or whitespace-only messages
+
+                let temp_message_id = chat_state.incrementing_ack_id;
+                let message = ChatMessage {
+                    message_id: temp_message_id,
+                    author_name: chat_state.current_user.username.to_owned(),
+                    author_id: chat_state.current_user.user_id,
+                    reply_id: 0, // TODO replies
+                    timestamp: Utc::now(),
+                    message: input_line.clone(),
+                    status: ChatMessageStatus::Sending,
+                };
+                chat_state.waiting_message_acks_id.push_back(temp_message_id);
+                chat_state.incrementing_ack_id += 1;
+
+                chat_state
+                    .chat_history
+                    .entry(channel_id)
+                    .and_modify(|message_history| message_history.push(message));
+
+                client.send_chat_message(channel_id, 0, input_line.clone(), vec![]).await?; // TODO improve
+                chat_state.focus = ChatFocus::ChatInput(0);
+                *input_line = "".to_owned();
+            }
+        }
+        MessageSendAck(message_id) => {
+            if let Some(temp_message_id) = chat_state.waiting_message_acks_id.pop_back() {
+                if let Some(message) = chat_state
+                    .chat_history
+                    .values_mut()
+                    .flat_map(|messages| messages.iter_mut())
+                    .find(|m| m.message_id == temp_message_id)
+                {
+                    message.status = ChatMessageStatus::Send;
+                    message.message_id = message_id;
+                } else {
+                    chat_state.waiting_message_acks_id.push_front(temp_message_id);
+                }
+            } else {
+                // TODO more logic maybe
+                error!("No message is waiting for ack");
+            }
         }
         ScrollDown => match chat_state.focus {
             ChatFocus::ChatHistory => {
@@ -176,9 +218,11 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
             _ => {}
         },
         InputChar(chr) => {
-            if let ChatFocus::ChatInput(i) = chat_state.focus {
-                chat_state.chat_input.insert(i, chr);
-
+            if let ChatFocus::ChatInput(i) = chat_state.focus
+                && let Some(channel_id) = chat_state.channels.get(chat_state.active_channel_idx)
+                && let Some(input_line) = chat_state.chat_inputs.get_mut(&channel_id.id)
+            {
+                input_line.insert(i, chr);
                 chat_state.focus = ChatFocus::ChatInput(i + 1)
             }
         }
@@ -201,7 +245,7 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
                 // if I requested first to make the borrow checker happy it could fail and end up in a broken state
                 // history would be incoming for a channel which is not added
                 let channel_id = channel.channel_id;
-
+                chat_state.chat_inputs.insert(channel_id, "".to_owned());
                 chat_state.channels.push(channel.into());
                 client.request_history_by_timestamp(channel_id, Utc::now(), 50).await?;
             }
@@ -258,8 +302,8 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
                 let timestamp = DateTime::from_timestamp(message.sent_timestamp as i64, 0).ok_or_else(|| anyhow!("Invalid timestamp"))?;
 
                 let display_message = ChatMessage {
-                    message_id: Some(message.message_id),
-                    reply_id: message.message_id,
+                    message_id: message.message_id,
+                    reply_id: 0,
                     author_name,
                     author_id: message.user_id,
                     timestamp,
@@ -276,21 +320,17 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
                 }
             }
         }
-        MessageSendAck(message_id) => {
-            // Never passes because local display messages do not have an id yet
-            if let Some(message) = chat_state
-                .chat_history
-                .iter_mut()
-                .find_map(|(_, messages)| messages.iter_mut().find(|m| m.message_id == Some(message_id)))
-            {
-                // Update the message status
-                message.status = ChatMessageStatus::Send;
-            } else {
-                debug!("Message with id {message_id} not found in chat history");
-            }
-        }
         Logout => {
             if let Some(login_state) = tui.state_map.get(&Screen::Login).cloned() {
+                chat_state.chat_history.values_mut().for_each(|messages| {
+                    messages.iter_mut().for_each(|msg| {
+                        if msg.status == ChatMessageStatus::Sending {
+                            msg.status = ChatMessageStatus::FailedToSend;
+                        }
+                    });
+                });
+                chat_state.waiting_message_acks_id.clear();
+
                 client.disconnect()?;
                 let user = &chat_state.current_user;
                 tui.state_map.insert(
@@ -321,6 +361,15 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
             todo!()
         }
         Disconnected => {
+            chat_state.chat_history.values_mut().for_each(|messages| {
+                messages.iter_mut().for_each(|msg| {
+                    if msg.status == ChatMessageStatus::Sending {
+                        msg.status = ChatMessageStatus::FailedToSend;
+                    }
+                });
+            });
+            chat_state.waiting_message_acks_id.clear();
+
             client.disconnect()?;
             chat_state.server_connection_state = ServerState::Disconnected;
             error!("TOOD reconnect logic");

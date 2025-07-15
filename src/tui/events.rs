@@ -29,7 +29,7 @@ pub enum TuiEvent {
     InputLeftTab,
     InputChar(char),
     InputDelete,
-    InputEnter,
+    MessageSend,
     ToggleLogs,
     LoginSuccess(UserId),
     Login,

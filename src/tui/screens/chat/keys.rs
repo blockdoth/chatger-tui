@@ -36,7 +36,7 @@ pub fn handle_chat_key_event(global_state: &GlobalState, event: Event, focus: Ch
                 Right if key_event.modifiers == KeyModifiers::CONTROL => Some(TuiEvent::InputRightTab),
                 Left => Some(TuiEvent::InputLeft),
                 Right => Some(TuiEvent::InputRight),
-                Enter => Some(TuiEvent::InputEnter),
+                Enter => Some(TuiEvent::MessageSend),
                 Char(chr) => Some(TuiEvent::InputChar(chr)),
                 Backspace => Some(TuiEvent::InputDelete),
 

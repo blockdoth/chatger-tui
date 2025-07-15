@@ -1,4 +1,5 @@
 use anyhow::{Result, anyhow};
+use log::info;
 
 use crate::network::client::MAX_MESSAGE_LENGTH;
 use crate::network::protocol::{MediaType, UserStatus};
@@ -185,7 +186,7 @@ impl Deserialize for SendMessageAckPacket {
         let status = ReturnStatus::deserialize_byte(bytes[0])?;
         let mut byte_index = 1;
 
-        let message_id = MessageId::from_be_bytes(bytes[byte_index..byte_index + 1].try_into()?);
+        let message_id = MessageId::from_be_bytes(bytes[byte_index..byte_index + 8].try_into()?);
         byte_index += 8;
 
         let (error_message, error_len) = deserialize_error(&bytes[byte_index..], &status)?;
@@ -367,7 +368,6 @@ impl Deserialize for UserData {
     fn deserialize(bytes: &[u8]) -> Result<(Self, usize)> {
         let user_id = UserId::from_be_bytes(bytes[0..8].try_into()?);
         let mut byte_index = 8;
-
         let status = UserStatus::deserialize_byte(bytes[byte_index])?;
         byte_index += 1;
 
@@ -497,14 +497,17 @@ impl Deserialize for UserStatusesPacket {
         let mut users = Vec::with_capacity(user_count);
 
         let mut byte_index = 3;
-        for _ in 0..user_count {
+        for i in 0..user_count {
+            // info!("decode {i}");
+            // info!("{:?}",&bytes[byte_index..80]);
+            // info!("{:?}", users);
+
             let user_id = UserId::from_be_bytes(bytes[byte_index..byte_index + 8].try_into()?);
             byte_index += 8;
-            let user_status = UserStatus::deserialize_byte(bytes[byte_index + 1])?;
+            let user_status = UserStatus::deserialize_byte(bytes[byte_index])?;
             byte_index += 1;
             users.push((user_id, user_status));
         }
-
         let (error_message, error_len) = deserialize_error(&bytes[byte_index..], &status)?;
         byte_index += error_len;
         Ok((

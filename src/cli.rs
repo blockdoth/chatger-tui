@@ -22,11 +22,16 @@ pub struct CliArgs {
     /// Log level (error, warn, info, debug, trace)
     #[arg(long, default_value_t = LevelFilter::Debug)]
     pub loglevel: LevelFilter,
+
+    /// Skip login screen
+    #[arg(long, default_value_t = false)]
+    pub auto_login: bool,
 }
 
 pub struct AppConfig {
     pub address: SocketAddr,
     pub username: String,
     pub password: String,
+    pub auto_login: bool,
     pub loglevel: LevelFilter,
 }

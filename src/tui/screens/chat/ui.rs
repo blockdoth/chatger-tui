@@ -1,4 +1,5 @@
 use chrono::{Duration, Utc};
+use futures::channel;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -216,7 +217,7 @@ fn render_chat_history(global_state: &GlobalState, chat_state: &ChatState, frame
         let current_message_line_count = chat_log.len();
 
         let start_index = current_message_line_count
-            .saturating_sub(area.height.saturating_sub(2) as usize)
+            .saturating_sub((area.height.div_ceil(2)).saturating_sub(1) as usize)
             .saturating_sub(chat_state.chat_scroll_offset);
 
         chat_log
@@ -278,36 +279,39 @@ fn render_chat_history(global_state: &GlobalState, chat_state: &ChatState, frame
 }
 
 fn render_chat_input(global_state: &GlobalState, chat_state: &ChatState, frame: &mut Frame, area: Rect) {
-    let input_text: Vec<Span> = match chat_state.focus {
-        ChatFocus::ChatInput(_) => chat_state
-            .chat_input
-            .chars()
-            .enumerate()
-            .map(|(idx, c)| {
-                if let ChatFocus::ChatInput(focussed_idx) = chat_state.focus
-                    && focussed_idx == idx
-                {
-                    Span::styled(c.to_string(), Modifier::UNDERLINED)
-                } else {
-                    Span::from(c.to_string())
-                }
-            })
-            .collect(),
-        _ => {
-            if let Some(channel) = chat_state.channels.get(chat_state.active_channel_idx) {
-                vec![Span::styled(
-                    format!("Message #{}", channel.name),
-                    Style::default().add_modifier(Modifier::DIM | Modifier::ITALIC),
-                )]
+    let (channel_id, channel_name) = match chat_state.channels.get(chat_state.active_channel_idx) {
+        Some(channel) => (channel.id, channel.name.clone()),
+        None => (0, "Should not be seen".to_owned()),
+    };
+
+    let input_line = match chat_state.chat_inputs.get(&channel_id) {
+        Some(line) if line.len() > 0 => {
+            if matches!(chat_state.focus, ChatFocus::ChatInput(_)) {
+                line.char_indices()
+                    .map(|(idx, c)| {
+                        if let ChatFocus::ChatInput(focussed_idx) = chat_state.focus
+                            && focussed_idx == idx
+                        {
+                            Span::styled(c.to_string(), Modifier::UNDERLINED)
+                        } else {
+                            Span::from(c.to_string())
+                        }
+                    })
+                    .collect()
             } else {
-                vec![]
+                vec![Span::from(line)]
             }
         }
+        _ => {
+            vec![Span::styled(
+                format!("Message #{channel_name}"),
+                Style::default().add_modifier(Modifier::DIM | Modifier::ITALIC),
+            )]
+        }
     };
-    let input_line = vec![Line::from(Span::from("")), Line::from(input_text)];
 
     let (borders, border_style, border_corners) = borders_input(chat_state);
-    let widget = Paragraph::new(Text::from(input_line)).block(
+    let widget = Paragraph::new(Text::from(vec![Line::raw(""), Line::from(input_line)])).block(
         Block::default()
             .padding(PADDING)
             .border_set(border_corners)

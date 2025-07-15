@@ -16,6 +16,7 @@ async fn main() -> Result<()> {
         username: args.username,
         password: args.password,
         loglevel: args.loglevel,
+        auto_login: args.auto_login,
     };
 
     tui::run(config).await

@@ -121,6 +121,10 @@ pub async fn run(config: AppConfig) -> Result<()> {
     });
 
     let tui = State::new(login_state);
+
+    if config.auto_login {
+        event_send.send(TuiEvent::Login).await?;
+    }
     let tui_runner = TuiRunner::new(tui, client, event_recv, event_send, config.loglevel);
 
     tui_runner.run(tasks).await

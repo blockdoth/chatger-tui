@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
-use log::{debug, error, info};
+use log::{debug, error, info, trace};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
@@ -19,7 +19,7 @@ use crate::network::protocol::header::{Header, PacketType};
 use crate::network::protocol::server::{Deserialize, ServerPayload};
 use crate::tui::events::TuiEvent;
 
-pub const MAX_MESSAGE_LENGTH: usize = 4096; // TODO figure out actual max size
+pub const MAX_MESSAGE_LENGTH: usize = 16 * 1024; // TODO figure out actual max size
 
 pub struct Client {
     is_connected: bool,
@@ -212,7 +212,7 @@ impl Client {
 
         let packet_type = match header.packet_type {
             PacketType::Server(packet_type) => packet_type,
-            PacketType::Client(packet_type) => return Err(anyhow!("Recevied packet type {packet_type:?}, which is a client packet")),
+            PacketType::Client(packet_type) => return Err(anyhow!("Received packet type {packet_type:?}, which is a client packet")),
         };
 
         let payload = ServerPayload::deserialize_packet(payload_buffer, packet_type)?;

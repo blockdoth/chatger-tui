@@ -23,7 +23,7 @@ impl From<Channel> for DisplayChannel {
 
 #[derive(Debug, Clone)]
 pub struct ChatMessage {
-    pub message_id: Option<u64>,
+    pub message_id: u64,
     pub author_name: String,
     pub author_id: u64,
     pub reply_id: u64,
@@ -39,7 +39,7 @@ pub struct User {
     pub status: UserStatus,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ChatMessageStatus {
     Sending,
     Send,

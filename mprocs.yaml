@@ -1,0 +1,16 @@
+log_path: null
+
+procs:
+  chatger:
+    cwd: "/home/blockdoth/sources/chatger"
+    shell: "./chatger"
+  cephon:
+    shell: "cargo run -- --address 0.0.0.0:4348 --auto-login --username cephon --password epicpass0"
+  local:
+    shell: "cargo run -- --address 0.0.0.0:4348 --auto-login --username local --password epicpass1"
+  laur:
+    shell: "cargo run -- --address 0.0.0.0:4348 --auto-login --username laur --password epicpass2"
+  iselgrey:
+    shell: "cargo run -- --address 0.0.0.0:4348 --auto-login --username iselgrey --password epicpassE"
+  penger:
+    shell: "cargo run -- --address 0.0.0.0:4348 --auto-login --username penger --password epicpass4"

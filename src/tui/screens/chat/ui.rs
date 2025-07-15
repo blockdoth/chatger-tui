@@ -130,29 +130,29 @@ fn split_chat_log_areas(global_state: &GlobalState, chat_state: &ChatState, area
 }
 
 fn render_channels(global_state: &GlobalState, chat_state: &ChatState, frame: &mut Frame, area: Rect) {
-    let mut channels: Vec<Line> = chat_state
-        .channels
-        .iter()
-        .map(|channel| {
-            let mut style = match channel.status {
-                ChannelStatus::Read => Style::default(),
-                ChannelStatus::Unread => Style::default().add_modifier(Modifier::BOLD),
-                ChannelStatus::Muted => Style::default().add_modifier(Modifier::DIM),
-            };
-            if channel.id == chat_state.channels.get(chat_state.active_channel_idx).unwrap().id {
-                style = style.bg(Color::DarkGray);
-            }
-
-            Line::from(Span::styled(format!("# {:15}", channel.name.clone()), style))
-        })
-        .collect();
-
-    if channels.is_empty() {
-        channels.push(Line::from(Span::styled(
+    let channels: Vec<Line> = if chat_state.channels.is_empty() {
+        vec![Line::from(Span::styled(
             "This server has no channels",
             Style::default().add_modifier(Modifier::DIM | Modifier::ITALIC),
-        )));
-    }
+        ))]
+    } else {
+        chat_state
+            .channels
+            .iter()
+            .map(|channel| {
+                let mut style = match channel.status {
+                    ChannelStatus::Read => Style::default(),
+                    ChannelStatus::Unread => Style::default().add_modifier(Modifier::BOLD),
+                    ChannelStatus::Muted => Style::default().add_modifier(Modifier::DIM),
+                };
+                if channel.id == chat_state.channels.get(chat_state.active_channel_idx).unwrap().id {
+                    style = style.bg(Color::DarkGray);
+                }
+
+                Line::from(Span::styled(format!("# {:15}", channel.name.clone()), style))
+            })
+            .collect()
+    };
 
     let (borders, border_style, border_corners) = borders_channel(chat_state);
     let widget = Paragraph::new(Text::from(channels)).block(
@@ -219,7 +219,10 @@ fn render_chat_history(global_state: &GlobalState, chat_state: &ChatState, frame
     let chat_log = chat_state.chat_history.get(&channel_id).unwrap_or(empty);
 
     let mut chatlog_lines: Vec<Line> = if chat_log.is_empty() {
-        vec![Line::from(Span::raw(channel_name.clone()))]
+        vec![Line::from(Span::styled(
+            format!("Be the first to message in #{channel_name} {channel_id} {:?}", chat_state.chat_history),
+            Style::default().add_modifier(Modifier::DIM | Modifier::ITALIC),
+        ))]
     } else {
         let current_message_line_count = chat_log.len();
 

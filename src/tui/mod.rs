@@ -33,7 +33,7 @@ pub enum Screen {
 
 #[derive(Clone, Debug)]
 pub enum AppState {
-    Chat(ChatState),
+    Chat(Box<ChatState>),
     Login(LoginState),
 }
 

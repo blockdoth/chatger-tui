@@ -30,6 +30,7 @@ pub struct ChatState {
     pub server_connection_state: ServerState,
     pub waiting_message_acks_id: VecDeque<MessageId>,
     pub incrementing_ack_id: MessageId,
+    pub users_typing: HashMap<ChannelId, HashMap<UserId, String>>,
 }
 
 #[derive(Clone, Debug)]
@@ -146,20 +147,11 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
         }
 
         MessageSend => {
-            let channel_id = chat_state
-                .channels
-                .get(chat_state.active_channel_idx)
-                .map(|c| c.id)
-                .ok_or_else(|| anyhow!("channel not found based on index"))?;
-
-            let input_line = chat_state
-                .chat_inputs
-                .get_mut(&channel_id)
-                .ok_or_else(|| anyhow!("No input found for channel {}", channel_id))?;
-
-            if !input_line.trim().is_empty() {
-                // Don't send empty or whitespace-only messages
-
+            if let Some(channel) = chat_state.channels.get(chat_state.active_channel_idx)
+                && let Some(input_line) = chat_state.chat_inputs.get_mut(&channel.id)
+                && !input_line.trim().is_empty()
+            // Don't send empty or whitespace-only messages
+            {
                 let temp_message_id = chat_state.incrementing_ack_id;
                 let message = ChatMessage {
                     message_id: temp_message_id,
@@ -173,12 +165,9 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
                 chat_state.waiting_message_acks_id.push_back(temp_message_id);
                 chat_state.incrementing_ack_id += 1;
 
-                chat_state
-                    .chat_history
-                    .entry(channel_id)
-                    .and_modify(|message_history| message_history.push(message));
+                chat_state.chat_history.entry(channel.id).or_default().push(message);
 
-                client.send_chat_message(channel_id, 0, input_line.clone(), vec![]).await?; // TODO improve
+                client.send_chat_message(channel.id, 0, input_line.clone(), vec![]).await?; // TODO improve
                 chat_state.focus = ChatFocus::ChatInput(0);
                 *input_line = "".to_owned();
             }
@@ -241,7 +230,7 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
         }
 
         Channels(channels) => {
-            debug!("received {channels:?}");
+            info!("received {channels:?}");
             for channel in channels {
                 // I want to add the channel first and only then request
                 // if I requested first to make the borrow checker happy it could fail and end up in a broken state
@@ -357,7 +346,15 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
             todo!()
         }
         Typing(channel_id, user_id, is_typing) => {
-            todo!()
+            if let Some(typing_users) = chat_state.users_typing.get_mut(&channel_id)
+                && let Some(user) = chat_state.users.iter().find(|user| user.id == user_id)
+            {
+                if is_typing {
+                    typing_users.insert(user_id, user.name.clone());
+                } else {
+                    typing_users.remove(&user_id);
+                }
+            }
         }
         UserStatusUpdate(user_id, status) => {
             todo!()

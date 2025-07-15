@@ -159,7 +159,7 @@ pub async fn handle_login_event(tui: &mut State, event: TuiEvent, event_send: &S
                 } else {
                     client.request_channel_ids().await?;
                     client.request_user_statuses().await?;
-                    tui.current_state = AppState::Chat(ChatState {
+                    tui.current_state = AppState::Chat(Box::new(ChatState {
                         focus: ChatFocus::Channels,
                         channels: vec![],
                         users: vec![],
@@ -177,7 +177,8 @@ pub async fn handle_login_event(tui: &mut State, event: TuiEvent, event_send: &S
                         server_address,
                         waiting_message_acks_id: VecDeque::new(),
                         incrementing_ack_id: 100000, // TODO better value
-                    });
+                        users_typing: HashMap::new(),
+                    }));
                 };
             } else {
                 panic!("Should be unreachable");

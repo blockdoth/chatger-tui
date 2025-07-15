@@ -95,16 +95,12 @@ where
 
         let mut terminal = Self::setup_terminal()?;
         loop {
-            terminal.draw(|f| self.app.draw_ui(f))?;
-
             tokio::select! {
-
               Some(event) = self.update_recv.recv() => {
                   if let Err(e) = self.app.handle_event(event, &update_send, &mut self.client).await {
                       error!("Failed to handle update from update_recv: {e:?}");
                   }
               }
-
               Some(event) = self.event_recv.recv() => {
                   if let Some(update) = self.app.process_event(event)
                     && let Err(e) = self.app.handle_event(update, &update_send, &mut self.client).await {
@@ -114,11 +110,9 @@ where
                   if self.app.should_quit() {
                     break;
                   }
-
               }
-
-              _ = tokio::time::sleep(Duration::from_millis(0)) => {
-
+              _ = tokio::time::sleep(Duration::from_millis(10)) => {
+                  terminal.draw(|f| self.app.draw_ui(f))?;
                   if let Err(e) = self.app.on_tick().await {
                       error!("Failed during tick handler: {e:?}");
                   }

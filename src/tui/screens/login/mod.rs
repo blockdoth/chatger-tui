@@ -1,3 +1,6 @@
+pub mod keys;
+pub mod state;
+
 use std::fmt::format;
 use std::fs;
 use std::iter::repeat;
@@ -10,7 +13,7 @@ use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::tui::screens::chat::split_app_info_areas;
-use crate::tui::{ChatFocus, GlobalState, InputStatus, LoginFocus, LoginState, State};
+use crate::tui::{GlobalState, InputStatus, LoginFocus, LoginState};
 
 pub fn draw_login(global_state: &GlobalState, login_state: &LoginState, frame: &mut Frame) {
     let main_area = frame.area();

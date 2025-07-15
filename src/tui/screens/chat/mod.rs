@@ -1,4 +1,6 @@
 mod borders;
+pub mod keys;
+pub mod state;
 
 use chrono::{Duration, Utc};
 use ratatui::Frame;
@@ -12,7 +14,8 @@ use crate::tui::chat::{ChannelStatus, ChatMessageStatus};
 use crate::tui::screens::chat::borders::{
     borders_channel, borders_chat_history, borders_input, borders_logs, borders_profile, borders_server_status, borders_users,
 };
-use crate::tui::{ChatFocus, ChatState, GlobalState, State};
+use crate::tui::screens::chat::state::{ChatFocus, ChatState};
+use crate::tui::GlobalState;
 
 const HEADER_STYLE: Style = Style {
     fg: None,

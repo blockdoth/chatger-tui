@@ -98,7 +98,7 @@ impl Tui<TuiEvent> for State {
             && state.time_since_last_typing.elapsed() > Duration::from_secs(2)
         {
             state.is_typing = false;
-            // event_send.send(TuiEvent::TypingExpired).await?;
+            event_send.send(TuiEvent::TypingExpired).await?;
         }
         Ok(())
     }

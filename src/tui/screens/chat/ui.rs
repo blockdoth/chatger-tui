@@ -223,7 +223,7 @@ fn render_chat_history(global_state: &GlobalState, chat_state: &ChatState, frame
 
     let mut chatlog_lines: Vec<Line> = if chat_log.is_empty() {
         vec![Line::from(Span::styled(
-            format!("Be the first to message in #{channel_name} {channel_id} {:?}", chat_state.chat_history),
+            format!("Be the first to message in #{channel_name}"),
             Style::default().add_modifier(Modifier::DIM | Modifier::ITALIC),
         ))]
     } else {
@@ -488,13 +488,14 @@ fn render_logs(global_state: &GlobalState, chat_state: &ChatState, frame: &mut F
     frame.render_widget(widget, area);
 }
 
+#[allow(clippy::ptr_arg)] // TODO fix
 fn is_typing(is_typing: &Vec<String>) -> String {
     match is_typing.len() {
         0 => String::new(),
         typers if typers > 4 => " Several people are typing... ".to_owned(),
         typers => {
             let mut string = String::new();
-            string.push_str(" ");
+            string.push(' ');
             for (idx, user) in is_typing.iter().enumerate() {
                 string.push_str(user);
 
@@ -506,9 +507,9 @@ fn is_typing(is_typing: &Vec<String>) -> String {
             }
 
             if typers == 1 {
-                string.push_str(" is typing ");
+                string.push_str(" is typing... ");
             } else {
-                string.push_str(" are typing ");
+                string.push_str(" are typing... ");
             }
 
             string

@@ -12,6 +12,7 @@ use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
 
 use crate::network::client::Client;
+use crate::network::protocol::UserStatus;
 use crate::tui::events::TuiEvent;
 use crate::tui::screens::chat::{ChatFocus, ServerState, UserProfile};
 use crate::tui::{AppState, ChatState, Screen, State};
@@ -127,6 +128,7 @@ pub async fn handle_login_event(tui: &mut State, event: TuiEvent, event_send: &S
                             .login(login_state.username_input.clone(), login_state.password_input.clone())
                             .await?;
                         login_state.server_address = Some(server_address);
+                        client.push_user_status(UserStatus::Online).await?;
                     }
                     Err(e) => {
                         if let Some(err) = e.downcast_ref::<io::Error>() {

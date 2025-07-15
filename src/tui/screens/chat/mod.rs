@@ -12,6 +12,7 @@ use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
 
 use crate::network::client::Client;
+use crate::network::protocol::UserStatus;
 use crate::tui::chat::{ChatMessage, ChatMessageStatus, DisplayChannel, User};
 use crate::tui::events::{ChannelId, MessageId, TuiEvent, UserId};
 use crate::tui::{AppState, Screen, State};
@@ -68,7 +69,10 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
     use TuiEvent::*;
 
     match event {
-        Exit => tui.global_state.should_quit = true,
+        Exit => {
+            client.push_user_status(UserStatus::Offline).await?;
+            tui.global_state.should_quit = true;
+        }
         ToggleLogs => {
             tui.global_state.show_logs = !tui.global_state.show_logs;
             chat_state.focus = ChatFocus::ChatHistory;
@@ -279,6 +283,7 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
             }
         }
         UserStatusUpdate(user_id, status) => {
+            info!("{:?}", chat_state.users);
             if let Some(user) = chat_state.users.iter_mut().find(|user| user.id == user_id) {
                 user.status = status;
             } else {

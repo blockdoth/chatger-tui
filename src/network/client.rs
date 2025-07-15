@@ -12,13 +12,14 @@ use tokio::sync::mpsc::Sender;
 use tokio::task::JoinHandle;
 
 use crate::network::handle_message;
+use crate::network::protocol::UserStatus;
 use crate::network::protocol::client::{
     Anchor, ClientPacketType, ClientPayload, GetChannelsPacket, GetHistoryPacket, GetUsersPacket, LoginPacket, SendMessagePacket, Serialize,
-    TypingPacket,
+    StatusPacket, TypingPacket,
 };
 use crate::network::protocol::header::{Header, PacketType};
 use crate::network::protocol::server::{Deserialize, ServerPayload};
-use crate::tui::events::TuiEvent;
+use crate::tui::events::{TuiEvent, UserId};
 
 pub const MAX_MESSAGE_LENGTH: usize = 16 * 1024; // TODO figure out actual max size
 
@@ -148,6 +149,17 @@ impl Client {
             &mut write_stream,
             ClientPacketType::Typing,
             ClientPayload::Typing(TypingPacket { is_typing, channel_id }),
+        )
+        .await
+    }
+
+    pub async fn push_user_status(&mut self, status: UserStatus) -> Result<()> {
+        let mut write_stream = self.write_stream.as_mut().ok_or_else(|| anyhow!("Not connected to server"))?.lock().await;
+
+        Self::send_message(
+            &mut write_stream,
+            ClientPacketType::Status,
+            ClientPayload::Status(StatusPacket { status }),
         )
         .await
     }

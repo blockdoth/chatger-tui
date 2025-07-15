@@ -11,7 +11,7 @@ pub fn handle_chat_key_event(global_state: &GlobalState, event: Event, focus: Ch
             ChatFocus::Channels => match key_event.code {
                 Up => Some(TuiEvent::ChannelUp),
                 Down => Some(TuiEvent::ChannelDown),
-                Right | Enter => Some(TuiEvent::ChatFocusChange(ChatFocus::ChatHistory)),
+                Right | Enter => Some(TuiEvent::ChatFocusChange(ChatFocus::ChatInput(0))),
                 Char('q') | Char('Q') => Some(TuiEvent::Exit),
                 Char('l') | Char('L') => Some(TuiEvent::ToggleLogs),
                 Char('x') | Char('X') => Some(TuiEvent::Logout),

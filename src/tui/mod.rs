@@ -5,14 +5,11 @@ pub mod logs;
 pub mod screens;
 
 use std::collections::HashMap;
-
 use std::net::SocketAddr;
 
 use anyhow::Result;
 use async_trait::async_trait;
-
 use crossterm::event::Event;
-
 use ratatui::Frame;
 use tokio::sync::mpsc::{self, Sender};
 
@@ -21,12 +18,12 @@ use crate::network::client::Client;
 use crate::tui::events::TuiEvent;
 use crate::tui::framework::{Tui, TuiRunner};
 use crate::tui::logs::LogEntry;
-use crate::tui::screens::chat::draw_main;
 use crate::tui::screens::chat::keys::handle_chat_key_event;
-use crate::tui::screens::chat::state::{ChatState, handle_chat_event};
-use crate::tui::screens::login::draw_login;
+use crate::tui::screens::chat::ui::draw_main;
+use crate::tui::screens::chat::{ChatState, handle_chat_event};
 use crate::tui::screens::login::keys::handle_login_key_event;
-use crate::tui::screens::login::state::{InputStatus, LoginFocus, LoginState, handle_login_event};
+use crate::tui::screens::login::ui::draw_login;
+use crate::tui::screens::login::{InputStatus, LoginFocus, LoginState, handle_login_event};
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum Screen {
@@ -115,9 +112,9 @@ pub async fn run(config: AppConfig) -> Result<()> {
     let tasks = vec![async move {}];
 
     let login_state = AppState::Login(LoginState {
-        username_input: config.username,
-        password_input: config.password,
-        server_address_input: config.address.to_string(),
+        username_input: format!("{} ", config.username),
+        password_input: format!("{} ", config.password),
+        server_address_input: format!("{} ", config.address),
         server_address: None,
         focus: LoginFocus::Nothing,
         input_status: InputStatus::AllFine,

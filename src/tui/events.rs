@@ -5,8 +5,8 @@ use crate::network::protocol::server::{Channel, HistoryMessage, UserData};
 use crate::tui::chat::MediaMessage;
 use crate::tui::framework::FromLog;
 use crate::tui::logs::LogEntry;
-use crate::tui::screens::chat::state::ChatFocus;
-use crate::tui::screens::login::state::LoginFocus;
+use crate::tui::screens::chat::ChatFocus;
+use crate::tui::screens::login::LoginFocus;
 
 pub type UserId = u64;
 pub type ChannelId = u64;

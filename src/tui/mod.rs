@@ -94,10 +94,12 @@ impl Tui<TuiEvent> for State {
 
     async fn on_tick(&mut self, event_send: &Sender<TuiEvent>) -> Result<()> {
         if let AppState::Chat(state) = &mut self.current_state
-            && state.is_typing && state.time_since_last_typing.elapsed() > Duration::from_secs(2) {
-                state.is_typing = false;
-                event_send.send(TuiEvent::TypingExpired).await?;
-            }
+            && state.is_typing
+            && state.time_since_last_typing.elapsed() > Duration::from_secs(2)
+        {
+            state.is_typing = false;
+            // event_send.send(TuiEvent::TypingExpired).await?;
+        }
         Ok(())
     }
 

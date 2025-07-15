@@ -491,23 +491,24 @@ fn render_logs(global_state: &GlobalState, chat_state: &ChatState, frame: &mut F
 fn is_typing(is_typing: &Vec<String>) -> String {
     match is_typing.len() {
         0 => String::new(),
-        typers if typers > 4 => "Several people are typing...".to_owned(),
+        typers if typers > 4 => " Several people are typing... ".to_owned(),
         typers => {
             let mut string = String::new();
+            string.push_str(" ");
             for (idx, user) in is_typing.iter().enumerate() {
                 string.push_str(user);
 
                 match idx {
-                    i if i == typers - 2 => string.push_str(" and "),
-                    i if i < typers - 2 => string.push_str(", "),
+                    i if typers > 1 && i == typers - 2 => string.push_str(" and "),
+                    i if typers > 1 && i < typers - 2 => string.push_str(", "),
                     _ => {}
                 }
             }
 
             if typers == 1 {
-                string.push_str(" is typing");
+                string.push_str(" is typing ");
             } else {
-                string.push_str(" are typing");
+                string.push_str(" are typing ");
             }
 
             string

@@ -278,6 +278,13 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
                 client.request_users(users_not_found).await?;
             }
         }
+        UserStatusUpdate(user_id, status) => {
+            if let Some(user) = chat_state.users.iter_mut().find(|user| user.id == user_id) {
+                user.status = status;
+            } else {
+                error!("Could not find user with id {user_id} to update their status");
+            }
+        }
         Users(users) => {
             let mut new_users: Vec<User> = users
                 .iter()
@@ -367,14 +374,12 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
         Media(media_message) => {
             todo!()
         }
-        UserStatusUpdate(user_id, status) => {
-            todo!()
-        }
+
         Typing(channel_id, user_id, is_typing) => {
-            info!("{channel_id} {user_id} {is_typing}");
-            if let Some(typing_users) = chat_state.users_typing.get_mut(&channel_id)
-                && let Some(user) = chat_state.users.iter().find(|user| user.id == user_id)
-            {
+            info!("User is typing {is_typing} {:?}", chat_state.users_typing);
+            if let Some(user) = chat_state.users.iter().find(|user| user.id == user_id) {
+                let typing_users = chat_state.users_typing.entry(channel_id).or_insert_with(HashMap::new);
+
                 if is_typing {
                     typing_users.insert(user_id, user.name.clone());
                 } else {

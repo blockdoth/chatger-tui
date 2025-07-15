@@ -36,6 +36,7 @@
             packages = with pkgs; [
               toolchain
               rust-analyzer-unwrapped
+              mprocs
             ];
 
             RUST_SRC_PATH = "${toolchain}/lib/rustlib/src/rust/library";

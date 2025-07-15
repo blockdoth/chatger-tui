@@ -25,8 +25,8 @@ pub enum ServerPacketType {
     UserStatuses = 0x07,
     Users = 0x08,
     Media = 0x09,
-    Typing = 0x10,
-    UserStatus = 0x11,
+    Typing = 0x0A,
+    UserStatus = 0x0B,
 }
 
 impl DeserializeByte for ServerPacketType {
@@ -43,8 +43,8 @@ impl DeserializeByte for ServerPacketType {
             0x07 => Ok(UserStatuses),
             0x08 => Ok(Users),
             0x09 => Ok(Media),
-            0x10 => Ok(Typing),
-            0x11 => Ok(UserStatus),
+            0x0A => Ok(Typing),
+            0x0B => Ok(UserStatus),
             other => Err(anyhow!("Unknown ServerPacketType value: {}", other)),
         }
     }

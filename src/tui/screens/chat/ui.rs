@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use chrono::{Duration, Utc};
 use futures::channel;
 use ratatui::Frame;
@@ -9,6 +11,7 @@ use ratatui::widgets::{Block, Borders, Padding, Paragraph, Wrap};
 use crate::network::protocol::UserStatus;
 use crate::tui::GlobalState;
 use crate::tui::chat::{ChannelStatus, ChatMessageStatus, User};
+use crate::tui::events::UserId;
 use crate::tui::screens::chat::borders::{
     borders_channel, borders_chat_history, borders_input, borders_logs, borders_profile, borders_server_status, borders_users,
 };
@@ -30,19 +33,19 @@ pub fn draw_main(global_state: &GlobalState, chat_state: &ChatState, frame: &mut
     let (channels_area, chat_area, users_area) = split_channel_chat_user_areas(global_state, chat_state, app_area);
     let (users_area, server_status_area) = split_users_server_areas(global_state, chat_state, users_area);
     let (channels_area, profile_area) = split_channels_profile_areas(global_state, chat_state, channels_area);
-    let (chat_log_area, chat_input_area) = split_chatlog_chatinput_areas(global_state, chat_state, chat_area);
+    let (chat_history_area, chat_input_area) = split_chatlog_chatinput_areas(global_state, chat_state, chat_area);
 
-    let chat_log_area = if global_state.show_logs {
-        let (chat_log_area, logs_area) = split_chat_log_areas(global_state, chat_state, chat_log_area);
+    let chat_history_area = if global_state.show_logs {
+        let (chat_history_area, logs_area) = split_chat_log_areas(global_state, chat_state, chat_history_area);
         render_logs(global_state, chat_state, frame, logs_area);
-        chat_log_area
+        chat_history_area
     } else {
-        chat_log_area
+        chat_history_area
     };
 
     render_channels(global_state, chat_state, frame, channels_area);
     render_profile(global_state, chat_state, frame, profile_area);
-    render_chat_history(global_state, chat_state, frame, chat_log_area);
+    render_chat_history(global_state, chat_state, frame, chat_history_area);
     render_chat_input(global_state, chat_state, frame, chat_input_area);
     render_users(global_state, chat_state, frame, users_area);
     render_server_status(global_state, chat_state, frame, server_status_area);
@@ -277,14 +280,39 @@ fn render_chat_history(global_state: &GlobalState, chat_state: &ChatState, frame
 
     let (borders, border_style, border_corners) = borders_chat_history(global_state, chat_state);
 
-    let widget = Paragraph::new(Text::from(chatlog_lines)).wrap(Wrap { trim: false }).block(
-        Block::default()
-            .padding(PADDING)
-            .border_set(border_corners)
-            .borders(borders)
-            .border_style(border_style)
-            .title(Span::styled(format!("Chat Log [{}]", &channel_name), HEADER_STYLE)),
-    );
+    //     .title(
+    //     Title::from(Span::styled(
+    //         "Bottom Title",
+    //         Style::default().add_modifier(Modifier::ITALIC),
+    //     ))
+    //     .position(ratatui::widgets::TitlePosition::Bottom),
+    // );
+
+    let mut block = Block::default()
+        .padding(PADDING)
+        .border_set(border_corners)
+        .borders(borders)
+        .border_style(border_style)
+        .title(Span::styled(format!("Chat Log [{}]", &channel_name), HEADER_STYLE));
+
+    let users_typing = match chat_state.focus {
+        ChatFocus::ChatInput(_) => "".to_owned(),
+        _ => is_typing(
+            &chat_state
+                .users_typing
+                .get(&channel_id)
+                .unwrap_or(&HashMap::new())
+                .values()
+                .cloned()
+                .collect(),
+        ),
+    };
+
+    if !users_typing.is_empty() {
+        block = block.title_bottom(Span::styled(users_typing, Modifier::ITALIC | Modifier::DIM));
+    };
+
+    let widget = Paragraph::new(Text::from(chatlog_lines)).wrap(Wrap { trim: false }).block(block);
     frame.render_widget(widget, area);
 }
 
@@ -321,14 +349,34 @@ fn render_chat_input(global_state: &GlobalState, chat_state: &ChatState, frame: 
         }
     };
 
+    let users_typing = match chat_state.focus {
+        ChatFocus::ChatInput(_) => is_typing(
+            &chat_state
+                .users_typing
+                .get(&channel_id)
+                .unwrap_or(&HashMap::new())
+                .values()
+                .cloned()
+                .collect(),
+        ),
+        _ => "".to_owned(),
+    };
+
     let (borders, border_style, border_corners) = borders_input(chat_state);
-    let widget = Paragraph::new(Text::from(vec![Line::raw(""), Line::from(input_line)])).block(
-        Block::default()
-            .padding(PADDING)
-            .border_set(border_corners)
-            .borders(borders)
-            .border_style(border_style), // .title(Span::styled("Chat Input".to_string(), HEADER_STYLE)),
-    );
+    let mut block = Block::default()
+        .padding(PADDING)
+        .border_set(border_corners)
+        .borders(borders)
+        .border_style(border_style);
+
+    let input_text = if users_typing.is_empty() {
+        vec![Line::raw(""), Line::from(input_line)]
+    } else {
+        block = block.title(Span::styled(users_typing, Modifier::ITALIC | Modifier::DIM));
+        vec![Line::raw(""), Line::from(input_line)]
+    };
+
+    let widget = Paragraph::new(Text::from(input_text)).block(block);
     frame.render_widget(widget, area);
 }
 
@@ -438,4 +486,31 @@ fn render_logs(global_state: &GlobalState, chat_state: &ChatState, frame: &mut F
             .title(Span::styled("Log".to_string(), HEADER_STYLE)),
     );
     frame.render_widget(widget, area);
+}
+
+fn is_typing(is_typing: &Vec<String>) -> String {
+    match is_typing.len() {
+        0 => String::new(),
+        typers if typers > 4 => "Several people are typing...".to_owned(),
+        typers => {
+            let mut string = String::new();
+            for (idx, user) in is_typing.iter().enumerate() {
+                string.push_str(user);
+
+                match idx {
+                    i if i == typers - 2 => string.push_str(" and "),
+                    i if i < typers - 2 => string.push_str(", "),
+                    _ => {}
+                }
+            }
+
+            if typers == 1 {
+                string.push_str(" is typing");
+            } else {
+                string.push_str(" are typing");
+            }
+
+            string
+        }
+    }
 }

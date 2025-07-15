@@ -113,7 +113,7 @@ where
               }
               _ = tokio::time::sleep(Duration::from_millis(10)) => {
                   terminal.draw(|f| self.app.draw_ui(f))?;
-                  if let Err(e) = self.app.on_tick().await {
+                  if let Err(e) = self.app.on_tick(&update_send).await {
                       error!("Failed during tick handler: {e:?}");
                   }
               }
@@ -202,7 +202,7 @@ pub trait Tui<E> {
 
     /// Periodic tick handler that gets called every loop iteration.
     /// Suitable for lightweight background updates like animations or polling.
-    async fn on_tick(&mut self) -> Result<()>;
+    async fn on_tick(&mut self, event_send: &Sender<E>) -> Result<()>;
 
     /// Determines if the TUI application should terminate.
     fn should_quit(&self) -> bool;

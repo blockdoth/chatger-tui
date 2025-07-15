@@ -82,12 +82,11 @@ pub async fn handle_message(payload: ServerPayload, stream: &mut Arc<Mutex<Owned
             Notification => panic!("todo"),
         },
         History(packet) => match packet.status {
-            Success => {
+            Success | Notification => {
                 event_send.send(TuiEvent::HistoryUpdate(packet.messages)).await?;
                 Ok(())
             }
             Failed => todo!(),
-            Notification => panic!("todo"),
         },
         SendMessageAck(packet) => match packet.status {
             Success => {

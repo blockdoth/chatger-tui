@@ -14,6 +14,7 @@ use tokio::task::JoinHandle;
 use crate::network::handle_message;
 use crate::network::protocol::client::{
     Anchor, ClientPacketType, ClientPayload, GetChannelsPacket, GetHistoryPacket, GetUsersPacket, LoginPacket, SendMessagePacket, Serialize,
+    TypingPacket,
 };
 use crate::network::protocol::header::{Header, PacketType};
 use crate::network::protocol::server::{Deserialize, ServerPayload};
@@ -136,6 +137,17 @@ impl Client {
                 message_text,
                 media_ids,
             }),
+        )
+        .await
+    }
+
+    pub async fn push_typing(&mut self, channel_id: u64, is_typing: bool) -> Result<()> {
+        let mut write_stream = self.write_stream.as_mut().ok_or_else(|| anyhow!("Not connected to server"))?.lock().await;
+
+        Self::send_message(
+            &mut write_stream,
+            ClientPacketType::Typing,
+            ClientPayload::Typing(TypingPacket { is_typing, channel_id }),
         )
         .await
     }

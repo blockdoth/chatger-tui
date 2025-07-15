@@ -19,8 +19,8 @@ pub enum ClientPacketType {
     UserStatuses = 0x87,
     Users = 0x88,
     Media = 0x89,
-    Typing = 0x90,
-    Status = 0x91,
+    Typing = 0x8A,
+    Status = 0x8B,
 }
 
 impl Serialize for ClientPacketType {

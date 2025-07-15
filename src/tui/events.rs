@@ -51,6 +51,7 @@ pub enum TuiEvent {
     MessageMediaAck(MediaId),
     Media(MediaMessage),
     Typing(ChannelId, UserId, bool),
+    TypingExpired,
 }
 
 impl FromLog for TuiEvent {

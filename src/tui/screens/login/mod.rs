@@ -6,9 +6,10 @@ use std::io::{self, ErrorKind};
 use std::net::SocketAddr;
 
 use anyhow::Result;
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use log::{debug, error, info};
 use tokio::sync::mpsc::Sender;
+use tokio::time::Instant;
 
 use crate::network::client::Client;
 use crate::tui::events::TuiEvent;
@@ -178,6 +179,8 @@ pub async fn handle_login_event(tui: &mut State, event: TuiEvent, event_send: &S
                         waiting_message_acks_id: VecDeque::new(),
                         incrementing_ack_id: 100000, // TODO better value
                         users_typing: HashMap::new(),
+                        is_typing: false,
+                        time_since_last_typing: Instant::now(),
                     }));
                 };
             } else {

@@ -6,9 +6,10 @@ use std::collections::{HashMap, VecDeque};
 use std::net::SocketAddr;
 
 use anyhow::{Result, anyhow};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use log::{debug, error, info};
 use tokio::sync::mpsc::Sender;
+use tokio::time::Instant;
 
 use crate::network::client::Client;
 use crate::tui::chat::{ChatMessage, ChatMessageStatus, DisplayChannel, User};
@@ -31,6 +32,8 @@ pub struct ChatState {
     pub waiting_message_acks_id: VecDeque<MessageId>,
     pub incrementing_ack_id: MessageId,
     pub users_typing: HashMap<ChannelId, HashMap<UserId, String>>,
+    pub is_typing: bool,
+    pub time_since_last_typing: Instant,
 }
 
 #[derive(Clone, Debug)]
@@ -77,9 +80,19 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
             } else {
                 chat_state.active_channel_idx -= 1;
             }
+            if let Some(channel_id) = chat_state.channels.get(chat_state.active_channel_idx)
+                && chat_state.is_typing
+            {
+                client.push_typing(channel_id.id, false).await?;
+            }
         }
         ChannelDown => {
             chat_state.active_channel_idx = (chat_state.active_channel_idx + 1) % chat_state.channels.len();
+            if let Some(channel_id) = chat_state.channels.get(chat_state.active_channel_idx)
+                && chat_state.is_typing
+            {
+                client.push_typing(channel_id.id, false).await?;
+            }
         }
         ChatFocusChange(focus) => chat_state.focus = focus,
         InputLeft => {
@@ -214,7 +227,12 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
                 && let Some(input_line) = chat_state.chat_inputs.get_mut(&channel_id.id)
             {
                 input_line.insert(i, chr);
-                chat_state.focus = ChatFocus::ChatInput(i + 1)
+                chat_state.focus = ChatFocus::ChatInput(i + 1);
+                chat_state.time_since_last_typing = Instant::now();
+                if !chat_state.is_typing {
+                    chat_state.is_typing = true;
+                    client.push_typing(channel_id.id, true).await?;
+                }
             }
         }
 
@@ -230,7 +248,6 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
         }
 
         Channels(channels) => {
-            info!("received {channels:?}");
             for channel in channels {
                 // I want to add the channel first and only then request
                 // if I requested first to make the borrow checker happy it could fail and end up in a broken state
@@ -313,6 +330,11 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
         }
         Logout => {
             if let Some(login_state) = tui.state_map.get(&Screen::Login).cloned() {
+                if let Some(channel_id) = chat_state.channels.get(chat_state.active_channel_idx)
+                    && chat_state.is_typing
+                {
+                    client.push_typing(channel_id.id, false).await?;
+                }
                 chat_state.chat_history.values_mut().for_each(|messages| {
                     messages.iter_mut().for_each(|msg| {
                         if msg.status == ChatMessageStatus::Sending {
@@ -345,7 +367,11 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
         Media(media_message) => {
             todo!()
         }
+        UserStatusUpdate(user_id, status) => {
+            todo!()
+        }
         Typing(channel_id, user_id, is_typing) => {
+            info!("{channel_id} {user_id} {is_typing}");
             if let Some(typing_users) = chat_state.users_typing.get_mut(&channel_id)
                 && let Some(user) = chat_state.users.iter().find(|user| user.id == user_id)
             {
@@ -356,8 +382,10 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
                 }
             }
         }
-        UserStatusUpdate(user_id, status) => {
-            todo!()
+        TypingExpired => {
+            if let Some(channel_id) = chat_state.channels.get(chat_state.active_channel_idx) {
+                client.push_typing(channel_id.id, false).await?;
+            }
         }
         Disconnected => {
             chat_state.chat_history.values_mut().for_each(|messages| {

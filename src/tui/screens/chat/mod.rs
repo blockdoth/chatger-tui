@@ -7,15 +7,15 @@ use std::net::SocketAddr;
 
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
-use log::{debug, error};
+use log::{debug, error, info};
 use tokio::sync::mpsc::Sender;
 
 use crate::network::client::Client;
 use crate::tui::chat::{ChatMessage, ChatMessageStatus, DisplayChannel, User};
 use crate::tui::events::{ChannelId, TuiEvent, UserId};
-use crate::tui::{AppState, State};
+use crate::tui::{AppState, Screen, State};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ChatState {
     pub focus: ChatFocus,
     pub channels: Vec<DisplayChannel>,
@@ -30,7 +30,7 @@ pub struct ChatState {
     pub server_connection_state: ServerState,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct UserProfile {
     pub user_id: UserId,
     pub username: String,
@@ -272,7 +272,6 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
                 let display_messages = chat_state.chat_history.entry(channel_id).or_default();
 
                 if !display_messages.iter().any(|m| m.message_id == display_message.message_id) {
-                    debug!("inserting {display_message:?} into history of channel {channel_id}");
                     display_messages.push(display_message);
                 }
             }
@@ -290,6 +289,25 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
                 debug!("Message with id {message_id} not found in chat history");
             }
         }
+        Logout => {
+            if let Some(login_state) = tui.state_map.get(&Screen::Login).cloned() {
+                client.disconnect()?;
+                let user = &chat_state.current_user;
+                tui.state_map.insert(
+                    Screen::Chat(
+                        user.username.trim().to_string(),
+                        user.password.trim().to_string(),
+                        chat_state.server_address.to_string(),
+                    ),
+                    AppState::Chat(chat_state.clone()),
+                );
+                tui.current_state = login_state;
+                info!("Logging out");
+            } else {
+                tui.global_state.should_quit = true;
+            }
+        }
+
         MessageMediaAck(media_id) => {
             todo!()
         }
@@ -303,6 +321,7 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
             todo!()
         }
         Disconnected => {
+            client.disconnect()?;
             chat_state.server_connection_state = ServerState::Disconnected;
             error!("TOOD reconnect logic");
 

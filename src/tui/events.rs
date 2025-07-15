@@ -33,6 +33,7 @@ pub enum TuiEvent {
     ToggleLogs,
     LoginSuccess(UserId),
     Login,
+    Logout,
     LoginFail(String),
     HealthCheck,
     SetUserNamePassword(String, String),

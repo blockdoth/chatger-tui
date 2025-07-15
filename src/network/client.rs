@@ -9,6 +9,7 @@ use tokio::net::TcpStream;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::sync::Mutex;
 use tokio::sync::mpsc::Sender;
+use tokio::task::JoinHandle;
 
 use crate::network::handle_message;
 use crate::network::protocol::client::{
@@ -24,6 +25,7 @@ pub struct Client {
     is_connected: bool,
     write_stream: Option<Arc<Mutex<OwnedWriteHalf>>>,
     event_send: Sender<TuiEvent>,
+    recv_handle: Option<JoinHandle<()>>,
 }
 
 impl Client {
@@ -32,6 +34,7 @@ impl Client {
             is_connected: false,
             write_stream: None,
             event_send,
+            recv_handle: None,
         }
     }
     pub async fn connect(&mut self, target_addr: SocketAddr) -> Result<()> {
@@ -47,7 +50,7 @@ impl Client {
         self.write_stream = Some(write_stream.clone());
         info!("Connected to {target_addr} from {src_addr}");
 
-        self.receiving_task(read_stream).await;
+        self.recv_handle = Some(self.receiving_task(read_stream).await);
         self.event_send.send(TuiEvent::HealthCheck).await?;
         Ok(())
     }
@@ -55,6 +58,9 @@ impl Client {
     pub fn disconnect(&mut self) -> Result<()> {
         self.write_stream = None;
         self.is_connected = false;
+        if let Some(recv_handle) = &self.recv_handle {
+            recv_handle.abort();
+        }
         debug!("Disconnected from server");
         Ok(())
     }
@@ -134,7 +140,7 @@ impl Client {
         .await
     }
 
-    async fn receiving_task(&mut self, mut read_stream: OwnedReadHalf) {
+    async fn receiving_task(&mut self, mut read_stream: OwnedReadHalf) -> JoinHandle<()> {
         info!("Started receiving task");
         let write_stream = self.write_stream.clone();
         let event_send = self.event_send.clone();
@@ -164,7 +170,7 @@ impl Client {
             }
 
             info!("Stopped receiving task");
-        });
+        })
     }
 }
 

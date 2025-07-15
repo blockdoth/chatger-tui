@@ -7,7 +7,7 @@ use std::net::SocketAddr;
 
 use anyhow::Result;
 use chrono::Utc;
-use log::error;
+use log::{debug, error, info};
 use tokio::sync::mpsc::Sender;
 
 use crate::network::client::Client;
@@ -36,7 +36,7 @@ pub enum InputStatus {
     UnknownError,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct LoginState {
     pub username_input: String,
     pub password_input: String,
@@ -99,9 +99,9 @@ pub async fn handle_login_event(tui: &mut State, event: TuiEvent, event_send: &S
             _ => {}
         },
         InputRight => match login_state.focus {
-            LoginFocus::UsernameInput(i) if i + 1 < login_state.username_input.len() => login_state.focus = LoginFocus::UsernameInput(i + 1),
-            LoginFocus::PasswordInput(i) if i + 1 < login_state.password_input.len() => login_state.focus = LoginFocus::PasswordInput(i + 1),
-            LoginFocus::ServerAddressInput(i) if i + 1 < login_state.server_address_input.len() => {
+            LoginFocus::UsernameInput(i) if i < login_state.username_input.len() => login_state.focus = LoginFocus::UsernameInput(i + 1),
+            LoginFocus::PasswordInput(i) if i < login_state.password_input.len() => login_state.focus = LoginFocus::PasswordInput(i + 1),
+            LoginFocus::ServerAddressInput(i) if i < login_state.server_address_input.len() => {
                 login_state.focus = LoginFocus::ServerAddressInput(i + 1)
             }
             _ => {}
@@ -113,9 +113,9 @@ pub async fn handle_login_event(tui: &mut State, event: TuiEvent, event_send: &S
             _ => {}
         },
         InputRightTab => match login_state.focus {
-            LoginFocus::UsernameInput(i) => login_state.focus = LoginFocus::UsernameInput(login_state.username_input.len() - 1),
-            LoginFocus::PasswordInput(i) => login_state.focus = LoginFocus::PasswordInput(login_state.password_input.len() - 1),
-            LoginFocus::ServerAddressInput(i) => login_state.focus = LoginFocus::ServerAddressInput(login_state.server_address_input.len() - 1),
+            LoginFocus::UsernameInput(i) => login_state.focus = LoginFocus::UsernameInput(login_state.username_input.len()),
+            LoginFocus::PasswordInput(i) => login_state.focus = LoginFocus::PasswordInput(login_state.password_input.len()),
+            LoginFocus::ServerAddressInput(i) => login_state.focus = LoginFocus::ServerAddressInput(login_state.server_address_input.len()),
             _ => {}
         },
         Login => {
@@ -123,10 +123,7 @@ pub async fn handle_login_event(tui: &mut State, event: TuiEvent, event_send: &S
                 match client.connect(server_address).await {
                     Ok(_) => {
                         client
-                            .login(
-                                login_state.username_input.trim().to_string(),
-                                login_state.password_input.clone().trim().to_string(),
-                            )
+                            .login(login_state.username_input.clone(), login_state.password_input.clone())
                             .await?;
                         login_state.server_address = Some(server_address);
                     }
@@ -151,25 +148,35 @@ pub async fn handle_login_event(tui: &mut State, event: TuiEvent, event_send: &S
             if let Some(server_address) = login_state.server_address {
                 // Save login state
                 tui.state_map.insert(Screen::Login, AppState::Login(login_state.clone()));
-                client.request_channel_ids().await?;
-                client.request_user_statuses().await?;
-                tui.current_state = AppState::Chat(ChatState {
-                    focus: ChatFocus::Channels,
-                    channels: vec![],
-                    users: vec![],
-                    chat_history: HashMap::new(),
-                    chat_input: " ".to_owned(),
-                    active_channel_idx: 0,
-                    current_user: UserProfile {
-                        user_id,
-                        username: login_state.username_input.clone(),
-                        password: login_state.password_input.clone(),
-                    },
-                    chat_scroll_offset: 0,
-                    last_healthcheck: Utc::now(),
-                    server_connection_state: ServerState::Connected,
-                    server_address,
-                });
+
+                let username = login_state.username_input.clone();
+                let password = login_state.password_input.clone();
+
+                debug!("{:?} {} {} {}", tui.state_map.keys(), username, password, server_address);
+                if let Some(chat_state) = tui.state_map.get(&Screen::Chat(username, password, server_address.to_string())) {
+                    tui.current_state = chat_state.clone();
+                    info!("Restored a saved session");
+                } else {
+                    client.request_channel_ids().await?;
+                    client.request_user_statuses().await?;
+                    tui.current_state = AppState::Chat(ChatState {
+                        focus: ChatFocus::Channels,
+                        channels: vec![],
+                        users: vec![],
+                        chat_history: HashMap::new(),
+                        chat_input: " ".to_owned(),
+                        active_channel_idx: 0,
+                        current_user: UserProfile {
+                            user_id,
+                            username: login_state.username_input.clone(),
+                            password: login_state.password_input.clone(),
+                        },
+                        chat_scroll_offset: 0,
+                        last_healthcheck: Utc::now(),
+                        server_connection_state: ServerState::Connected,
+                        server_address,
+                    });
+                };
             } else {
                 panic!("Should be unreachable");
             }

@@ -27,11 +27,11 @@ use crate::tui::screens::login::{InputStatus, LoginFocus, LoginState, handle_log
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum Screen {
-    Chat(SocketAddr),
+    Chat(String, String, String),
     Login,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum AppState {
     Chat(ChatState),
     Login(LoginState),
@@ -112,9 +112,9 @@ pub async fn run(config: AppConfig) -> Result<()> {
     let tasks = vec![async move {}];
 
     let login_state = AppState::Login(LoginState {
-        username_input: format!("{} ", config.username),
-        password_input: format!("{} ", config.password),
-        server_address_input: format!("{} ", config.address),
+        username_input: config.username,
+        password_input: config.password,
+        server_address_input: config.address.to_string(),
         server_address: None,
         focus: LoginFocus::Nothing,
         input_status: InputStatus::AllFine,

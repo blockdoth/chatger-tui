@@ -7,7 +7,7 @@ use ratatui::widgets::{Block, Borders, Padding, Paragraph, Wrap};
 
 use crate::network::protocol::UserStatus;
 use crate::tui::GlobalState;
-use crate::tui::chat::{ChannelStatus, ChatMessageStatus};
+use crate::tui::chat::{ChannelStatus, ChatMessageStatus, User};
 use crate::tui::screens::chat::borders::{
     borders_channel, borders_chat_history, borders_input, borders_logs, borders_profile, borders_server_status, borders_users,
 };
@@ -17,7 +17,7 @@ const HEADER_STYLE: Style = Style {
     fg: None,
     bg: None,
     underline_color: None,
-    add_modifier: Modifier::empty(),
+    add_modifier: Modifier::BOLD,
     sub_modifier: Modifier::empty(),
 };
 
@@ -318,30 +318,57 @@ fn render_chat_input(global_state: &GlobalState, chat_state: &ChatState, frame: 
 }
 
 fn render_users(global_state: &GlobalState, chat_state: &ChatState, frame: &mut Frame, area: Rect) {
-    let lines: Vec<Line> = chat_state
+    let (mut online_users, mut offline_users): (Vec<&User>, Vec<&User>) = chat_state
         .users
         .iter()
         .filter(|user| chat_state.current_user.username != user.name)
-        .map(|user| {
-            let (symbol, symbol_style) = match user.status {
-                UserStatus::Offline => ("●", Style::default().fg(Color::Gray).add_modifier(Modifier::DIM)),
-                UserStatus::Online => ("●", Style::default().fg(Color::Green)),
-                UserStatus::Idle => ("●", Style::default().fg(Color::Yellow)),
-                UserStatus::DoNotDisturb => ("●", Style::default().fg(Color::Red)),
-            };
-            let name_style = if let UserStatus::Offline = user.status {
-                Style::default().fg(Color::Gray).add_modifier(Modifier::DIM)
-            } else {
-                Style::default()
-            };
+        .partition(|user| matches!(user.status, UserStatus::Online | UserStatus::Idle | UserStatus::DoNotDisturb));
 
-            Line::from(vec![
-                Span::styled(format!("{symbol} "), symbol_style),
-                Span::styled(user.name.clone(), name_style),
-            ])
-        })
-        .collect();
+    online_users.sort_by_key(|user| &user.name);
+    offline_users.sort_by_key(|user| &user.name);
 
+    let format_user_line = |user: &User| {
+        let (symbol, symbol_style) = match user.status {
+            UserStatus::Offline => ("●", Style::default().fg(Color::Gray).add_modifier(Modifier::DIM)),
+            UserStatus::Online => ("●", Style::default().fg(Color::Green)),
+            UserStatus::Idle => ("●", Style::default().fg(Color::Yellow)),
+            UserStatus::DoNotDisturb => ("●", Style::default().fg(Color::Red)),
+        };
+
+        let name_style = if let UserStatus::Offline = user.status {
+            Style::default().fg(Color::Gray).add_modifier(Modifier::DIM)
+        } else {
+            Style::default()
+        };
+
+        Line::from(vec![
+            Span::styled(format!(" {symbol} "), symbol_style),
+            Span::styled(user.name.clone(), name_style),
+        ])
+    };
+
+    let mut lines = vec![];
+
+    if !online_users.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "Online",
+            Style::default().fg(Color::Green).add_modifier(Modifier::UNDERLINED),
+        )));
+        for user in &online_users {
+            lines.push(format_user_line(user));
+        }
+        lines.push(Line::from(""));
+    }
+
+    if !offline_users.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "Offline",
+            Style::default().fg(Color::Gray).add_modifier(Modifier::UNDERLINED),
+        )));
+        for user in &offline_users {
+            lines.push(format_user_line(user));
+        }
+    }
     let (borders, border_style, border_corners) = borders_users(chat_state);
 
     let widget = Paragraph::new(Text::from(lines)).block(
@@ -357,8 +384,9 @@ fn render_users(global_state: &GlobalState, chat_state: &ChatState, frame: &mut 
 
 fn render_info(global_state: &GlobalState, chat_state: &ChatState, frame: &mut Frame, area: Rect) {
     let info_text = match chat_state.focus {
-        ChatFocus::Channels => "[↑↓] Change Channel | [→] Chat log | [L]ogs | [Q]uit",
-        ChatFocus::ChatHistory => "[↓] Input | [←] Channels | [→] Chat log | [L]ogs | [Q]uit",
+        ChatFocus::Channels => "[↑↓] Change Channel | [Enter | →] Chat log | [L]ogs | [Q]uit",
+        ChatFocus::ChatHistory if global_state.show_logs => "[↓] Input | [←] Channels | [→] Logs | [L]ogs | [Q]uit",
+        ChatFocus::ChatHistory => "[Enter | ↓] Input | [←] Channels | [→] Users | [L]ogs | [Q]uit",
         ChatFocus::ChatInput(_) => {
             "[Enter] Send Message | [Backspace] Delete | [←→] Move Cursor | [Ctrl + ←→] Tab move Cursor | [↑] Chatlog | [L]ogs | [Q]uit"
         }

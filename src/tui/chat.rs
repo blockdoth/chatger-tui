@@ -4,7 +4,7 @@ use crate::network::protocol::server::Channel;
 use crate::network::protocol::{MediaType, UserStatus};
 use crate::tui::events::ChannelId;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DisplayChannel {
     pub id: ChannelId,
     pub name: String,
@@ -46,7 +46,7 @@ pub enum ChatMessageStatus {
     FailedToSend,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum ChannelStatus {
     Read,
     Unread,

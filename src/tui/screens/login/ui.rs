@@ -95,7 +95,7 @@ fn input_line(login_state: &'_ LoginState, line_selected: LineSelected, input_le
     };
     selected_style = selected_style.add_modifier(Modifier::UNDERLINED);
 
-    let mut spans: Vec<Span> = input
+    let mut spans: Vec<Span> = format!("{input} ")
         .chars()
         .enumerate()
         .map(|(idx, c)| {

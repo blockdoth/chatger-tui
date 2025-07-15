@@ -33,11 +33,12 @@ pub async fn handle_message(payload: ServerPayload, stream: &mut Arc<Mutex<Owned
         Login(packet) => match packet.status {
             Success => {
                 info!("Succefully logged in");
-                event_send.send(TuiEvent::LoggedIn).await?;
+                event_send.send(TuiEvent::LoginSuccess(0)).await?; // TODO user id handling
                 Ok(())
             }
             Failed => match packet.error_message {
                 Some(message) => {
+                    event_send.send(TuiEvent::LoginFail(message.clone())).await?; // TODO distinction between username and password fail
                     error!("failed to log in {message}");
                     Err(anyhow!("failed to log in {}", message))
                 }

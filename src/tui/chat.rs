@@ -4,6 +4,7 @@ use crate::network::protocol::server::Channel;
 use crate::network::protocol::{MediaType, UserStatus};
 use crate::tui::events::ChannelId;
 
+#[derive(Clone)]
 pub struct DisplayChannel {
     pub id: ChannelId,
     pub name: String,
@@ -20,7 +21,7 @@ impl From<Channel> for DisplayChannel {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ChatMessage {
     pub message_id: Option<u64>,
     pub author_name: String,
@@ -38,12 +39,14 @@ pub struct User {
     pub status: UserStatus,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ChatMessageStatus {
     Sending,
     Send,
     FailedToSend,
 }
+
+#[derive(Clone)]
 pub enum ChannelStatus {
     Read,
     Unread,

@@ -196,11 +196,11 @@ where
 #[async_trait]
 pub trait Tui<E> {
     /// Draws the UI using the current state. Should be purely visual with no side effects.
-    fn draw_ui(&self, f: &mut Frame);
+    fn draw_ui(&mut self, f: &mut Frame);
 
     /// Handles a keyboard event and optionally returns an update to process.
     /// Should not mutate state directly.
-    fn process_event(&self, event: Event) -> Option<E>;
+    fn process_event(&mut self, event: Event) -> Option<E>;
 
     /// Main update handler that reacts to updates from events, logs, or commands.
     /// This is where all state mutations should occur.

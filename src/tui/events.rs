@@ -2,10 +2,10 @@ use std::net::SocketAddr;
 
 use crate::network::protocol::UserStatus;
 use crate::network::protocol::server::{Channel, HistoryMessage, UserData};
-use crate::tui::Focus;
 use crate::tui::chat::MediaMessage;
 use crate::tui::framework::FromLog;
 use crate::tui::logs::LogEntry;
+use crate::tui::{ChatFocus, LoginFocus};
 
 pub type UserId = u64;
 pub type ChannelId = u64;
@@ -20,7 +20,8 @@ pub enum TuiEvent {
     Exit,
     ChannelUp,
     ChannelDown,
-    FocusChange(Focus),
+    ChatFocusChange(ChatFocus),
+    LoginFocusChange(LoginFocus),
     InputRight,
     InputRightTab,
     InputLeft,
@@ -29,7 +30,9 @@ pub enum TuiEvent {
     InputDelete,
     InputEnter,
     ToggleLogs,
-    LoggedIn,
+    LoginSuccess(UserId),
+    Login,
+    LoginFail(String),
     HealthCheck,
     SetUserNamePassword(String, String),
     Disconnected,

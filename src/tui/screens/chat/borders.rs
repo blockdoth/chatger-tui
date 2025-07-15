@@ -2,11 +2,11 @@ use ratatui::style::{Color, Style};
 use ratatui::symbols::{border, line};
 use ratatui::widgets::Borders;
 
-use crate::tui::{Focus, State};
+use crate::tui::{ChatFocus, ChatState, GlobalState, State};
 
-pub fn borders_channel(state: &State) -> (Borders, Style, border::Set) {
+pub fn borders_channel(state: &ChatState) -> (Borders, Style, border::Set) {
     match state.focus {
-        Focus::Channels => (
+        ChatFocus::Channels => (
             Borders::ALL,
             Style::default().fg(Color::Cyan),
             border::Set {
@@ -27,9 +27,9 @@ pub fn borders_channel(state: &State) -> (Borders, Style, border::Set) {
     }
 }
 
-pub fn borders_profile(state: &State) -> (Borders, Style, border::Set) {
+pub fn borders_profile(state: &ChatState) -> (Borders, Style, border::Set) {
     match state.focus {
-        Focus::Channels => (
+        ChatFocus::Channels => (
             Borders::LEFT | Borders::RIGHT | Borders::BOTTOM,
             Style::default(),
             border::Set {
@@ -54,13 +54,13 @@ pub fn borders_profile(state: &State) -> (Borders, Style, border::Set) {
     }
 }
 
-pub fn borders_chat_history(state: &State) -> (Borders, Style, border::Set) {
-    match state.focus {
-        Focus::Channels => (
+pub fn borders_chat_history(global_state: &GlobalState, chat_state: &ChatState) -> (Borders, Style, border::Set) {
+    match chat_state.focus {
+        ChatFocus::Channels => (
             Borders::RIGHT | Borders::TOP | Borders::BOTTOM,
             Style::default(),
             border::Set {
-                bottom_right: if state.show_logs {
+                bottom_right: if global_state.show_logs {
                     line::NORMAL.horizontal_up
                 } else {
                     line::NORMAL.cross
@@ -69,12 +69,12 @@ pub fn borders_chat_history(state: &State) -> (Borders, Style, border::Set) {
                 ..border::PLAIN
             },
         ),
-        Focus::ChatHistory => (
+        ChatFocus::ChatHistory => (
             Borders::ALL,
             Style::default().fg(Color::Cyan),
             border::Set {
                 bottom_left: line::NORMAL.cross,
-                bottom_right: if state.show_logs {
+                bottom_right: if global_state.show_logs {
                     line::NORMAL.horizontal_up
                 } else {
                     line::NORMAL.cross
@@ -84,7 +84,7 @@ pub fn borders_chat_history(state: &State) -> (Borders, Style, border::Set) {
                 ..border::PLAIN
             },
         ),
-        Focus::Users => (
+        ChatFocus::Users => (
             Borders::TOP | Borders::LEFT | Borders::BOTTOM,
             Style::default(),
             border::Set {
@@ -95,7 +95,7 @@ pub fn borders_chat_history(state: &State) -> (Borders, Style, border::Set) {
                 ..border::PLAIN
             },
         ),
-        Focus::ChatInput(_) => (
+        ChatFocus::ChatInput(_) => (
             Borders::TOP | Borders::RIGHT | Borders::LEFT,
             Style::default(),
             border::Set {
@@ -106,7 +106,7 @@ pub fn borders_chat_history(state: &State) -> (Borders, Style, border::Set) {
                 ..border::PLAIN
             },
         ),
-        Focus::Logs => (
+        ChatFocus::Logs => (
             Borders::TOP | Borders::LEFT | Borders::BOTTOM,
             Style::default(),
             border::Set {
@@ -120,9 +120,9 @@ pub fn borders_chat_history(state: &State) -> (Borders, Style, border::Set) {
     }
 }
 
-pub fn borders_input(state: &State) -> (Borders, Style, border::Set) {
+pub fn borders_input(state: &ChatState) -> (Borders, Style, border::Set) {
     match state.focus {
-        Focus::Channels => (
+        ChatFocus::Channels => (
             Borders::RIGHT | Borders::BOTTOM,
             Style::default(),
             border::Set {
@@ -131,7 +131,7 @@ pub fn borders_input(state: &State) -> (Borders, Style, border::Set) {
                 ..border::PLAIN
             },
         ),
-        Focus::ChatHistory | Focus::Logs => (
+        ChatFocus::ChatHistory | ChatFocus::Logs => (
             Borders::LEFT | Borders::RIGHT | Borders::BOTTOM,
             Style::default(),
             border::Set {
@@ -142,7 +142,7 @@ pub fn borders_input(state: &State) -> (Borders, Style, border::Set) {
                 ..border::PLAIN
             },
         ),
-        Focus::ChatInput(_) => (
+        ChatFocus::ChatInput(_) => (
             Borders::ALL,
             Style::default().fg(Color::Cyan),
             border::Set {
@@ -153,7 +153,7 @@ pub fn borders_input(state: &State) -> (Borders, Style, border::Set) {
                 ..border::PLAIN
             },
         ),
-        Focus::Users => (
+        ChatFocus::Users => (
             Borders::BOTTOM | Borders::LEFT,
             Style::default(),
             border::Set {
@@ -165,9 +165,9 @@ pub fn borders_input(state: &State) -> (Borders, Style, border::Set) {
     }
 }
 
-pub fn borders_users(state: &State) -> (Borders, Style, border::Set) {
+pub fn borders_users(state: &ChatState) -> (Borders, Style, border::Set) {
     match state.focus {
-        Focus::ChatHistory => (
+        ChatFocus::ChatHistory => (
             Borders::RIGHT | Borders::TOP | Borders::BOTTOM,
             Style::default(),
             border::Set {
@@ -175,7 +175,7 @@ pub fn borders_users(state: &State) -> (Borders, Style, border::Set) {
                 ..border::PLAIN
             },
         ),
-        Focus::Logs => (
+        ChatFocus::Logs => (
             Borders::RIGHT | Borders::TOP | Borders::BOTTOM,
             Style::default(),
             border::Set {
@@ -183,7 +183,7 @@ pub fn borders_users(state: &State) -> (Borders, Style, border::Set) {
                 ..border::PLAIN
             },
         ),
-        Focus::ChatInput(_) => (
+        ChatFocus::ChatInput(_) => (
             Borders::TOP | Borders::BOTTOM | Borders::RIGHT,
             Style::default(),
             border::Set {
@@ -193,7 +193,7 @@ pub fn borders_users(state: &State) -> (Borders, Style, border::Set) {
                 ..border::PLAIN
             },
         ),
-        Focus::Users => (
+        ChatFocus::Users => (
             Borders::ALL,
             Style::default().fg(Color::Cyan),
             border::Set {
@@ -215,9 +215,9 @@ pub fn borders_users(state: &State) -> (Borders, Style, border::Set) {
     }
 }
 
-pub fn borders_logs(state: &State) -> (Borders, Style, border::Set) {
+pub fn borders_logs(state: &ChatState) -> (Borders, Style, border::Set) {
     match state.focus {
-        Focus::Channels => (
+        ChatFocus::Channels => (
             Borders::RIGHT | Borders::TOP | Borders::BOTTOM,
             Style::default(),
             border::Set {
@@ -226,7 +226,7 @@ pub fn borders_logs(state: &State) -> (Borders, Style, border::Set) {
                 ..border::PLAIN
             },
         ),
-        Focus::ChatHistory => (
+        ChatFocus::ChatHistory => (
             Borders::TOP | Borders::BOTTOM | Borders::RIGHT,
             Style::default(),
             border::Set {
@@ -237,7 +237,7 @@ pub fn borders_logs(state: &State) -> (Borders, Style, border::Set) {
                 ..border::PLAIN
             },
         ),
-        Focus::Users => (
+        ChatFocus::Users => (
             Borders::TOP | Borders::LEFT | Borders::BOTTOM,
             Style::default(),
             border::Set {
@@ -248,7 +248,7 @@ pub fn borders_logs(state: &State) -> (Borders, Style, border::Set) {
                 ..border::PLAIN
             },
         ),
-        Focus::ChatInput(_) => (
+        ChatFocus::ChatInput(_) => (
             Borders::TOP | Borders::RIGHT,
             Style::default(),
             border::Set {
@@ -259,7 +259,7 @@ pub fn borders_logs(state: &State) -> (Borders, Style, border::Set) {
                 ..border::PLAIN
             },
         ),
-        Focus::Logs => (
+        ChatFocus::Logs => (
             Borders::ALL,
             Style::default().fg(Color::Cyan),
             border::Set {
@@ -273,9 +273,9 @@ pub fn borders_logs(state: &State) -> (Borders, Style, border::Set) {
     }
 }
 
-pub fn borders_server_status(state: &State) -> (Borders, Style, border::Set) {
+pub fn borders_server_status(state: &ChatState) -> (Borders, Style, border::Set) {
     match state.focus {
-        Focus::Users => (
+        ChatFocus::Users => (
             Borders::LEFT | Borders::RIGHT | Borders::BOTTOM,
             Style::default(),
             border::Set {

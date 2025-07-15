@@ -52,6 +52,13 @@ impl Client {
         Ok(())
     }
 
+    pub fn disconnect(&mut self) -> Result<()> {
+        self.write_stream = None;
+        self.is_connected = false;
+        debug!("Disconnected from server");
+        Ok(())
+    }
+
     pub async fn login(&mut self, username: String, password: String) -> Result<()> {
         let mut write_stream = self.write_stream.as_mut().ok_or_else(|| anyhow!("Not connected to server"))?.lock().await;
 

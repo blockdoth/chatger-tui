@@ -67,7 +67,7 @@ pub enum ServerPayload {
 
 fn deserialize_error(bytes: &[u8], status: &ReturnStatus) -> Result<(Option<String>, usize)> {
     if *status == ReturnStatus::Failed {
-        let (msg, len) = String::deserialize(&bytes[1..])?;
+        let (msg, len) = String::deserialize(bytes)?;
         Ok((Some(msg), len))
     } else {
         Ok((None, 0))

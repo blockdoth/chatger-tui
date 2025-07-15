@@ -90,7 +90,9 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
         }
         InputRight => {
             if let ChatFocus::ChatInput(i) = chat_state.focus
-                && i + 1 < chat_state.chat_inputs.len()
+                && let Some(channel_id) = chat_state.channels.get(chat_state.active_channel_idx)
+                && let Some(input_line) = chat_state.chat_inputs.get(&channel_id.id)
+                && i < input_line.len()
             {
                 chat_state.focus = ChatFocus::ChatInput(i + 1)
             }
@@ -101,7 +103,7 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
                 && let Some(channel_id) = chat_state.channels.get(chat_state.active_channel_idx)
                 && let Some(input_line) = chat_state.chat_inputs.get(&channel_id.id)
             {
-                let idx = input_line
+                let idx = format!("{input_line} ")
                     .char_indices()
                     .take(i)
                     .collect::<Vec<_>>()
@@ -117,11 +119,11 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
         }
         InputRightTab => {
             if let ChatFocus::ChatInput(i) = chat_state.focus
-                && i + 1 < chat_state.chat_inputs.len()
                 && let Some(channel_id) = chat_state.channels.get(chat_state.active_channel_idx)
                 && let Some(input_line) = chat_state.chat_inputs.get(&channel_id.id)
+                && i < input_line.len()
             {
-                let idx = input_line
+                let idx = format!("{input_line} ")
                     .char_indices()
                     .skip(i + 1)
                     .skip_while(|(_, c)| *c != ' ')

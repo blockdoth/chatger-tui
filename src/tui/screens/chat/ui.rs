@@ -130,7 +130,7 @@ fn split_chat_log_areas(global_state: &GlobalState, chat_state: &ChatState, area
 }
 
 fn render_channels(global_state: &GlobalState, chat_state: &ChatState, frame: &mut Frame, area: Rect) {
-    let channels: Vec<Line> = chat_state
+    let mut channels: Vec<Line> = chat_state
         .channels
         .iter()
         .map(|channel| {
@@ -146,6 +146,13 @@ fn render_channels(global_state: &GlobalState, chat_state: &ChatState, frame: &m
             Line::from(Span::styled(format!("# {:15}", channel.name.clone()), style))
         })
         .collect();
+
+    if channels.is_empty() {
+        channels.push(Line::from(Span::styled(
+            "This server has no channels",
+            Style::default().add_modifier(Modifier::DIM | Modifier::ITALIC),
+        )));
+    }
 
     let (borders, border_style, border_corners) = borders_channel(chat_state);
     let widget = Paragraph::new(Text::from(channels)).block(
@@ -203,17 +210,17 @@ fn render_chat_history(global_state: &GlobalState, chat_state: &ChatState, frame
     // TODO make less ugly
     let empty = &vec![];
 
-    let chatlog_lines: Vec<Line> = if chat_state.chat_history.is_empty() {
-        vec![Line::from(Span::raw(""))]
+    let (channel_id, channel_name) = if let Some(channel) = &chat_state.channels.get(chat_state.active_channel_idx) {
+        (channel.id, channel.name.clone())
     } else {
-        let channel_id = if let Some(channel) = &chat_state.channels.get(chat_state.active_channel_idx) {
-            channel.id
-        } else {
-            0
-        };
+        (0, "Should not be shown".to_string())
+    };
 
-        let chat_log = chat_state.chat_history.get(&channel_id).unwrap_or(empty);
+    let chat_log = chat_state.chat_history.get(&channel_id).unwrap_or(empty);
 
+    let mut chatlog_lines: Vec<Line> = if chat_log.is_empty() {
+        vec![Line::from(Span::raw(channel_name.clone()))]
+    } else {
         let current_message_line_count = chat_log.len();
 
         let start_index = current_message_line_count
@@ -273,7 +280,7 @@ fn render_chat_history(global_state: &GlobalState, chat_state: &ChatState, frame
             .border_set(border_corners)
             .borders(borders)
             .border_style(border_style)
-            .title(Span::styled("Chat Log".to_string(), HEADER_STYLE)),
+            .title(Span::styled(format!("Chat Log [{}]", &channel_name), HEADER_STYLE)),
     );
     frame.render_widget(widget, area);
 }
@@ -285,16 +292,17 @@ fn render_chat_input(global_state: &GlobalState, chat_state: &ChatState, frame: 
     };
 
     let input_line = match chat_state.chat_inputs.get(&channel_id) {
-        Some(line) if line.len() > 0 => {
+        Some(line) if !line.is_empty() => {
             if matches!(chat_state.focus, ChatFocus::ChatInput(_)) {
-                line.char_indices()
-                    .map(|(idx, c)| {
+                format!("{line} ")
+                    .char_indices()
+                    .map(|(idx, chr)| {
                         if let ChatFocus::ChatInput(focussed_idx) = chat_state.focus
                             && focussed_idx == idx
                         {
-                            Span::styled(c.to_string(), Modifier::UNDERLINED)
+                            Span::styled(chr.to_string(), Modifier::UNDERLINED)
                         } else {
-                            Span::from(c.to_string())
+                            Span::from(chr.to_string())
                         }
                     })
                     .collect()
@@ -390,7 +398,7 @@ fn render_info(global_state: &GlobalState, chat_state: &ChatState, frame: &mut F
     let info_text = match chat_state.focus {
         ChatFocus::Channels => "[↑↓] Change Channel | [Enter | →] Chat log | [L]ogs | [Q]uit",
         ChatFocus::ChatHistory if global_state.show_logs => "[↓] Input | [←] Channels | [→] Logs | [L]ogs | [Q]uit",
-        ChatFocus::ChatHistory => "[Enter | ↓] Input | [←] Channels | [→] Users | [L]ogs | [Q]uit",
+        ChatFocus::ChatHistory => "[Enter | Space ] Input | [←] Channels | [→] Users | [L]ogs | [Q]uit",
         ChatFocus::ChatInput(_) => {
             "[Enter] Send Message | [Backspace] Delete | [←→] Move Cursor | [Ctrl + ←→] Tab move Cursor | [↑] Chatlog | [L]ogs | [Q]uit"
         }

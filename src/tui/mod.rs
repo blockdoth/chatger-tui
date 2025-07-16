@@ -10,8 +10,8 @@ use std::time::Duration;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use crossterm::event::Event;
 use ratatui::Frame;
+use ratatui::crossterm::event::Event;
 use tokio::sync::mpsc::{self, Sender};
 
 use crate::cli::AppConfig;

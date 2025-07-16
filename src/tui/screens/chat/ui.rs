@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use chrono::{Duration, Utc};
-use futures::channel;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};

@@ -1,4 +1,4 @@
-use crossterm::event::{Event, KeyCode, KeyModifiers};
+use ratatui::crossterm::event::{Event, KeyCode, KeyModifiers};
 
 use crate::tui::events::TuiEvent;
 use crate::tui::screens::login::LoginFocus;

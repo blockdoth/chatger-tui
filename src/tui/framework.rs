@@ -6,10 +6,10 @@ use std::vec;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use crossterm::event::{Event, poll, read};
-use crossterm::execute;
-use crossterm::terminal::{Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode};
 use log::{LevelFilter, debug, error, info};
+use ratatui::crossterm::event::{Event, poll, read};
+use ratatui::crossterm::execute;
+use ratatui::crossterm::terminal::{Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode};
 use ratatui::prelude::CrosstermBackend;
 use ratatui::{Frame, Terminal};
 use tokio::sync::mpsc::{self, Receiver, Sender};

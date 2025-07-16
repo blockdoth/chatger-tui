@@ -1,0 +1,9 @@
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[build]
+rustflags = ["-C", "target-cpu=native", "-C", "link-arg=-s"]

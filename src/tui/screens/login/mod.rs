@@ -6,7 +6,6 @@ use std::io::{self, ErrorKind};
 use std::net::SocketAddr;
 
 use anyhow::Result;
-use chrono::{Duration, Utc};
 use log::{debug, error, info};
 use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
@@ -14,7 +13,7 @@ use tokio::time::Instant;
 use crate::network::client::Client;
 use crate::network::protocol::UserStatus;
 use crate::tui::events::TuiEvent;
-use crate::tui::screens::chat::{ChatFocus, ServerState, UserProfile};
+use crate::tui::screens::chat::{ChatFocus, ServerConnectionStatus, UserProfile};
 use crate::tui::{AppState, ChatState, Screen, State};
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -48,8 +47,8 @@ pub struct LoginState {
     pub input_status: InputStatus,
 }
 
-pub async fn handle_login_event(tui: &mut State, event: TuiEvent, event_send: &Sender<TuiEvent>, client: &mut Client) -> Result<()> {
-    let mut login_state = match &mut tui.current_state {
+pub async fn handle_login_event(tui: &mut State, event: TuiEvent, client: &mut Client) -> Result<()> {
+    let login_state = match &mut tui.current_state {
         AppState::Login(login_state) => login_state,
         _ => panic!("This function only handles the chat state"),
     };
@@ -109,15 +108,15 @@ pub async fn handle_login_event(tui: &mut State, event: TuiEvent, event_send: &S
             _ => {}
         },
         InputLeftTab => match login_state.focus {
-            LoginFocus::UsernameInput(i) => login_state.focus = LoginFocus::UsernameInput(0),
-            LoginFocus::PasswordInput(i) => login_state.focus = LoginFocus::PasswordInput(0),
-            LoginFocus::ServerAddressInput(i) => login_state.focus = LoginFocus::ServerAddressInput(0),
+            LoginFocus::UsernameInput(_) => login_state.focus = LoginFocus::UsernameInput(0),
+            LoginFocus::PasswordInput(_) => login_state.focus = LoginFocus::PasswordInput(0),
+            LoginFocus::ServerAddressInput(_) => login_state.focus = LoginFocus::ServerAddressInput(0),
             _ => {}
         },
         InputRightTab => match login_state.focus {
-            LoginFocus::UsernameInput(i) => login_state.focus = LoginFocus::UsernameInput(login_state.username_input.len()),
-            LoginFocus::PasswordInput(i) => login_state.focus = LoginFocus::PasswordInput(login_state.password_input.len()),
-            LoginFocus::ServerAddressInput(i) => login_state.focus = LoginFocus::ServerAddressInput(login_state.server_address_input.len()),
+            LoginFocus::UsernameInput(_) => login_state.focus = LoginFocus::UsernameInput(login_state.username_input.len()),
+            LoginFocus::PasswordInput(_) => login_state.focus = LoginFocus::PasswordInput(login_state.password_input.len()),
+            LoginFocus::ServerAddressInput(_) => login_state.focus = LoginFocus::ServerAddressInput(login_state.server_address_input.len()),
             _ => {}
         },
         Login => {
@@ -150,6 +149,7 @@ pub async fn handle_login_event(tui: &mut State, event: TuiEvent, event_send: &S
         LoginSuccess(user_id) => {
             if let Some(server_address) = login_state.server_address {
                 // Save login state
+                login_state.input_status = InputStatus::AllFine;
                 tui.state_map.insert(Screen::Login, AppState::Login(login_state.clone()));
 
                 let username = login_state.username_input.clone();
@@ -175,8 +175,7 @@ pub async fn handle_login_event(tui: &mut State, event: TuiEvent, event_send: &S
                             password: login_state.password_input.clone(),
                         },
                         chat_scroll_offset: 0,
-                        last_healthcheck: Utc::now(),
-                        server_connection_state: ServerState::Connected,
+                        server_connection_status: ServerConnectionStatus::Connected,
                         server_address,
                         waiting_message_acks_id: VecDeque::new(),
                         incrementing_ack_id: 100000, // TODO better value
@@ -195,7 +194,7 @@ pub async fn handle_login_event(tui: &mut State, event: TuiEvent, event_send: &S
                 _ => login_state.input_status = InputStatus::FailedToLogin,
             }
 
-            client.disconnect(); // TODO make it work properly
+            client.disconnect()?; // TODO make it work properly
         }
         ToggleLogs => {
             tui.global_state.show_logs = !tui.global_state.show_logs;

@@ -20,7 +20,7 @@ pub struct CliArgs {
     pub password: String,
 
     /// Log level (error, warn, info, debug, trace)
-    #[arg(long, default_value_t = LevelFilter::Debug)]
+    #[arg(long, default_value_t = LevelFilter::Info)]
     pub loglevel: LevelFilter,
 
     /// Automatically login

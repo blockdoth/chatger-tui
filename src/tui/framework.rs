@@ -97,13 +97,22 @@ where
         loop {
             tokio::select! {
               Some(event) = self.update_recv.recv() => {
-                  if let Err(e) = self.app.handle_event(event, &update_send, &mut self.client).await {
-                      error!("Failed to handle update from update_recv: {e:?}");
+                  if let Err(e) = self.app.handle_event(event, &mut self.client).await { if let Some(io_err) = e.downcast_ref::<std::io::Error>() {
+                  match io_err.kind() {
+                      std::io::ErrorKind::ConnectionRefused => {
+                          error!("Connection was refused. Is the server running?");
+                      },
+                      other => {
+                          error!("IO error of kind {other:?}: {io_err}");
+                      }
                   }
+                  } else {
+                      error!("Failed to handle update: {:?}", e.root_cause());
+                  } }
               }
               Some(event) = self.event_recv.recv() => {
                   if let Some(update) = self.app.process_event(event)
-                    && let Err(e) = self.app.handle_event(update, &update_send, &mut self.client).await {
+                    && let Err(e) = self.app.handle_event(update, &mut self.client).await {
                     error!("Failed to handle update from keyboard: {e:?}");
                   }
 
@@ -113,7 +122,7 @@ where
               }
               _ = tokio::time::sleep(Duration::from_millis(10)) => {
                   terminal.draw(|f| self.app.draw_ui(f))?;
-                  if let Err(e) = self.app.on_tick(&update_send).await {
+                  if let Err(e) = self.app.on_tick(&update_send, &mut self.client).await {
                       error!("Failed during tick handler: {e:?}");
                   }
               }
@@ -198,11 +207,11 @@ pub trait Tui<E> {
 
     /// Main update handler that reacts to updates from events, logs, or commands.
     /// This is where all state mutations should occur.
-    async fn handle_event(&mut self, event: E, event_send: &Sender<E>, client: &mut Client) -> Result<()>;
+    async fn handle_event(&mut self, event: E, client: &mut Client) -> Result<()>;
 
     /// Periodic tick handler that gets called every loop iteration.
     /// Suitable for lightweight background updates like animations or polling.
-    async fn on_tick(&mut self, event_send: &Sender<E>) -> Result<()>;
+    async fn on_tick(&mut self, event_send: &Sender<E>, client: &mut Client) -> Result<()>;
 
     /// Determines if the TUI application should terminate.
     fn should_quit(&self) -> bool;

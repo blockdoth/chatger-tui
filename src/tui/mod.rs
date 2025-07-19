@@ -5,7 +5,6 @@ pub mod logs;
 pub mod screens;
 
 use std::collections::HashMap;
-use std::net::SocketAddr;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -21,7 +20,7 @@ use crate::tui::framework::{Tui, TuiRunner};
 use crate::tui::logs::LogEntry;
 use crate::tui::screens::chat::keys::handle_chat_key_event;
 use crate::tui::screens::chat::ui::draw_main;
-use crate::tui::screens::chat::{ChatState, handle_chat_event};
+use crate::tui::screens::chat::{ChatState, ServerConnectionStatus, handle_chat_event};
 use crate::tui::screens::login::keys::handle_login_key_event;
 use crate::tui::screens::login::ui::draw_login;
 use crate::tui::screens::login::{InputStatus, LoginFocus, LoginState, handle_login_event};
@@ -85,21 +84,32 @@ impl Tui<TuiEvent> for State {
         }
     }
 
-    async fn handle_event(&mut self, event: TuiEvent, event_send: &Sender<TuiEvent>, client: &mut Client) -> Result<()> {
+    async fn handle_event(&mut self, event: TuiEvent, client: &mut Client) -> Result<()> {
         match &mut self.current_state {
-            AppState::Chat(_) => handle_chat_event(self, event, event_send, client).await,
-            AppState::Login(_) => handle_login_event(self, event, event_send, client).await,
+            AppState::Chat(_) => handle_chat_event(self, event, client).await,
+            AppState::Login(_) => handle_login_event(self, event, client).await,
         }
     }
 
-    async fn on_tick(&mut self, event_send: &Sender<TuiEvent>) -> Result<()> {
-        if let AppState::Chat(state) = &mut self.current_state
-            && state.is_typing
-            && state.time_since_last_typing.elapsed() > Duration::from_secs(2)
-        {
-            state.is_typing = false;
-            event_send.send(TuiEvent::TypingExpired).await?;
+    async fn on_tick(&mut self, event_send: &Sender<TuiEvent>, client: &mut Client) -> Result<()> {
+        if let AppState::Chat(state) = &mut self.current_state {
+            if state.is_typing && state.time_since_last_typing.elapsed() > Duration::from_secs(2) {
+                event_send.send(TuiEvent::TypingExpired).await?;
+            }
+            let connection_elapsed = client.time_since_last_transmit.elapsed();
+            if connection_elapsed > Duration::from_secs(10) && client.connection_status == ServerConnectionStatus::Connected {
+                event_send.send(TuiEvent::PossiblyUnhealthyConnection).await?;
+            }
+            if (connection_elapsed > Duration::from_secs(15)
+                || client.connection_status == ServerConnectionStatus::Disconnected
+                || client.connection_status == ServerConnectionStatus::Reconnecting)
+                && client.time_since_last_reconnect.elapsed() > Duration::from_secs(5)
+            {
+                client.time_since_last_reconnect.update();
+                event_send.send(TuiEvent::Reconnect).await?;
+            }
         }
+
         Ok(())
     }
 
@@ -112,10 +122,6 @@ pub async fn run(config: AppConfig) -> Result<()> {
     let (event_send, event_recv) = mpsc::channel::<TuiEvent>(10);
 
     let client = Client::new(event_send.clone());
-
-    let username = config.username.clone();
-    let password = config.password.clone();
-    event_send.send(TuiEvent::ConnectAndLogin(config.address, username, password)).await?;
 
     let tasks = vec![async move {}];
 

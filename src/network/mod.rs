@@ -1,20 +1,14 @@
-use std::sync::Arc;
-
 use anyhow::{Result, anyhow};
 use log::{error, info};
-use tokio::net::tcp::OwnedWriteHalf;
-use tokio::sync::Mutex;
 use tokio::sync::mpsc::Sender;
 
-use crate::network::client::Client;
-use crate::network::protocol::client::{ClientPacketType, ClientPayload};
-use crate::network::protocol::server::{HealthCheckPacket, HealthKind, ReturnStatus, ServerPayload};
+use crate::network::protocol::server::{HealthKind, ReturnStatus, ServerPayload};
 use crate::tui::chat::MediaMessage;
 use crate::tui::events::TuiEvent;
 pub mod client;
 pub mod protocol;
 
-pub async fn handle_message(payload: ServerPayload, stream: &mut Arc<Mutex<OwnedWriteHalf>>, event_send: Sender<TuiEvent>) -> Result<()> {
+pub async fn handle_message(payload: ServerPayload, event_send: Sender<TuiEvent>) -> Result<()> {
     use ServerPayload::*;
 
     use self::ReturnStatus::*;
@@ -22,10 +16,7 @@ pub async fn handle_message(payload: ServerPayload, stream: &mut Arc<Mutex<Owned
     match payload {
         Health(packet) => match packet.kind {
             HealthKind::Ping => {
-                let mut stream = stream.lock().await;
-                let payload = ClientPayload::Health(HealthCheckPacket { kind: HealthKind::Pong });
-                Client::send_message(&mut stream, ClientPacketType::Healthcheck, payload).await?;
-                event_send.send(TuiEvent::HealthCheck).await?;
+                event_send.send(TuiEvent::HealthCheckRecv).await?;
                 Ok(())
             }
             HealthKind::Pong => panic!("todo"),

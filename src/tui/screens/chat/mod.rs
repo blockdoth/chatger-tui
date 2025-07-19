@@ -6,7 +6,7 @@ use std::collections::{HashMap, VecDeque};
 use std::net::SocketAddr;
 
 use anyhow::{Result, anyhow};
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Utc};
 use log::{debug, error, info};
 use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
@@ -16,26 +16,6 @@ use crate::network::protocol::UserStatus;
 use crate::tui::chat::{ChatMessage, ChatMessageStatus, DisplayChannel, User};
 use crate::tui::events::{ChannelId, MessageId, TuiEvent, UserId};
 use crate::tui::{AppState, Screen, State};
-
-#[derive(Clone, Debug)]
-pub struct ChatState {
-    pub focus: ChatFocus,
-    pub channels: Vec<DisplayChannel>,
-    pub users: Vec<User>,
-    pub chat_history: HashMap<ChannelId, Vec<ChatMessage>>,
-    pub chat_inputs: HashMap<ChannelId, String>,
-    pub active_channel_idx: usize,
-    pub current_user: UserProfile,
-    pub chat_scroll_offset: usize,
-    pub last_healthcheck: DateTime<Utc>,
-    pub server_address: SocketAddr,
-    pub server_connection_state: ServerState,
-    pub waiting_message_acks_id: VecDeque<MessageId>,
-    pub incrementing_ack_id: MessageId,
-    pub users_typing: HashMap<ChannelId, HashMap<UserId, String>>,
-    pub is_typing: bool,
-    pub time_since_last_typing: Instant,
-}
 
 #[derive(Clone, Debug)]
 pub struct UserProfile {
@@ -53,14 +33,33 @@ pub enum ChatFocus {
     Logs,
 }
 #[derive(Debug, PartialEq, Clone)]
-pub enum ServerState {
+pub enum ServerConnectionStatus {
     Connected,
     Unhealthy,
     Disconnected,
     Reconnecting,
 }
 
-pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Sender<TuiEvent>, client: &mut Client) -> Result<()> {
+#[derive(Clone, Debug)]
+pub struct ChatState {
+    pub focus: ChatFocus,
+    pub channels: Vec<DisplayChannel>,
+    pub users: Vec<User>,
+    pub chat_history: HashMap<ChannelId, Vec<ChatMessage>>,
+    pub chat_inputs: HashMap<ChannelId, String>,
+    pub active_channel_idx: usize,
+    pub current_user: UserProfile,
+    pub chat_scroll_offset: usize,
+    pub server_address: SocketAddr,
+    pub server_connection_status: ServerConnectionStatus,
+    pub waiting_message_acks_id: VecDeque<MessageId>,
+    pub incrementing_ack_id: MessageId,
+    pub users_typing: HashMap<ChannelId, HashMap<UserId, String>>,
+    pub is_typing: bool,
+    pub time_since_last_typing: Instant,
+}
+
+pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, client: &mut Client) -> Result<()> {
     let mut chat_state = match &mut tui.current_state {
         AppState::Chat(chat_state) => chat_state,
         _ => panic!("This function only handles the chat state"),
@@ -70,8 +69,8 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
 
     match event {
         Exit => {
-            client.push_user_status(UserStatus::Offline).await?;
             tui.global_state.should_quit = true;
+            client.push_user_status(UserStatus::Offline).await?;
         }
         ToggleLogs => {
             tui.global_state.show_logs = !tui.global_state.show_logs;
@@ -246,9 +245,9 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
                 client.request_channels(channel_ids).await?
             }
         }
-        HealthCheck => {
-            chat_state.last_healthcheck = Utc::now();
-            client.request_user_statuses().await?;
+        HealthCheckRecv => {
+            client.send_healthcheck().await?;
+            client.request_user_statuses().await?; // TODO think about where this should go
         }
 
         Channels(channels) => {
@@ -393,35 +392,41 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, event_send: &Se
             }
         }
         TypingExpired => {
+            chat_state.is_typing = false;
             if let Some(channel_id) = chat_state.channels.get(chat_state.active_channel_idx) {
                 client.push_typing(channel_id.id, false).await?;
             }
         }
+        PossiblyUnhealthyConnection => {
+            client.connection_status = ServerConnectionStatus::Unhealthy;
+            chat_state.server_connection_status = client.connection_status.clone(); // Somewhat ugly, but its works without requiring a large refactor
+        }
+        Reconnect => {
+            info!("Attempting to reconnect to {:?}", chat_state.server_address);
+            client
+                .reconnect(
+                    chat_state.server_address,
+                    chat_state.current_user.username.clone(),
+                    chat_state.current_user.password.clone(),
+                )
+                .await?;
+
+            chat_state.server_connection_status = client.connection_status.clone(); // Somewhat ugly, but its works without requiring a large refactor            
+        }
         Disconnected => {
-            chat_state.chat_history.values_mut().for_each(|messages| {
-                messages.iter_mut().for_each(|msg| {
-                    if msg.status == ChatMessageStatus::Sending {
-                        msg.status = ChatMessageStatus::FailedToSend;
-                    }
+            if chat_state.server_connection_status != ServerConnectionStatus::Reconnecting {
+                chat_state.chat_history.values_mut().for_each(|messages| {
+                    messages.iter_mut().for_each(|msg| {
+                        if msg.status == ChatMessageStatus::Sending {
+                            msg.status = ChatMessageStatus::FailedToSend;
+                        }
+                    });
                 });
-            });
-            chat_state.waiting_message_acks_id.clear();
+                chat_state.waiting_message_acks_id.clear();
 
-            client.disconnect()?;
-            chat_state.server_connection_state = ServerState::Disconnected;
-            error!("TOOD reconnect logic");
-
-            // TOOD reconnect logic
-
-            // loop {
-            //   if let Some(address) = tui.server_address && let Some(UserProfile{username, password, .. }) = &tui.current_user {
-            //     if tui.server_connection_state != ServerState::Reconnecting {
-            //       tui.server_connection_state = ServerState::Reconnecting;
-            //       event_send.send(TuiEvent::ConnectAndLogin(address, username.clone(), password.clone())).await;
-            //     }
-            //   }
-            //   sleep(Duration::from_secs(5)).await;
-            // }
+                client.disconnect()?;
+                chat_state.server_connection_status = ServerConnectionStatus::Reconnecting; // TODO figure out when to actually go in a Disconnected state
+            }
         }
         _ => {}
     }

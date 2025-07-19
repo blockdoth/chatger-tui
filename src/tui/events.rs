@@ -1,5 +1,3 @@
-use std::net::SocketAddr;
-
 use crate::network::protocol::UserStatus;
 use crate::network::protocol::server::{Channel, HistoryMessage, UserData};
 use crate::tui::chat::MediaMessage;
@@ -35,14 +33,12 @@ pub enum TuiEvent {
     Login,
     Logout,
     LoginFail(String),
-    HealthCheck,
-    SetUserNamePassword(String, String),
+    HealthCheckRecv,
     Disconnected,
     Channels(Vec<Channel>),
     ChannelIDs(Vec<ChannelId>),
     ScrollUp,
     ScrollDown,
-    ConnectAndLogin(SocketAddr, String, String),
     UserStatusesUpdate(Vec<(UserId, UserStatus)>),
     UserStatusUpdate(UserId, UserStatus),
     Users(Vec<UserData>),
@@ -52,6 +48,8 @@ pub enum TuiEvent {
     Media(MediaMessage),
     Typing(ChannelId, UserId, bool),
     TypingExpired,
+    PossiblyUnhealthyConnection,
+    Reconnect,
 }
 
 impl FromLog for TuiEvent {

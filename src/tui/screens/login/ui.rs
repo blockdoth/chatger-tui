@@ -1,4 +1,3 @@
-use std::fmt::format;
 use std::fs;
 use std::iter::repeat;
 
@@ -31,7 +30,7 @@ pub fn draw_login(global_state: &GlobalState, login_state: &LoginState, frame: &
     render_info(frame, info_area);
 }
 
-fn split_background_log_areas(global_state: &GlobalState, area: Rect) -> (Rect, Rect) {
+fn split_background_log_areas(_global_state: &GlobalState, area: Rect) -> (Rect, Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(0)
@@ -40,7 +39,7 @@ fn split_background_log_areas(global_state: &GlobalState, area: Rect) -> (Rect, 
     (chunks[0], chunks[1])
 }
 
-fn split_login_area_background(global_state: &GlobalState, login_state: &LoginState, area: Rect) -> (Rect, Rect) {
+fn split_login_area_background(_global_state: &GlobalState, _login_state: &LoginState, area: Rect) -> (Rect, Rect) {
     let [horizontally_centered] = Layout::horizontal([Constraint::Percentage(15)]).flex(Flex::Center).areas(area);
     let [centered] = Layout::vertical([Constraint::Length(16)]).flex(Flex::Center).areas(horizontally_centered);
     (centered, area)
@@ -116,14 +115,12 @@ fn input_line(login_state: &'_ LoginState, line_selected: LineSelected, input_le
     spans
 }
 
-fn render_login(global_state: &GlobalState, login_state: &LoginState, frame: &mut Frame, area: Rect) {
+fn render_login(_global_state: &GlobalState, login_state: &LoginState, frame: &mut Frame, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(2), Constraint::Min(11), Constraint::Length(2)])
         .split(area);
     let (login_title_area, login_form_area, login_button_area) = (chunks[0], chunks[1], chunks[2]);
-
-    let obscured_password = "*".repeat(login_state.password_input.chars().filter(|c| *c != ' ').count());
 
     let side_padding_len = 2;
 
@@ -241,7 +238,7 @@ fn render_login(global_state: &GlobalState, login_state: &LoginState, frame: &mu
 const PENGER_FILE_PATH: &str = "./assets/penger.txt"; // TODO hardcode in a better way
 const PENGER_TITLE_FILE_PATH: &str = "./assets/penger_title.txt";
 
-fn render_background(global_state: &GlobalState, login_state: &LoginState, frame: &mut Frame, area: Rect) {
+fn render_background(_global_state: &GlobalState, _login_state: &LoginState, frame: &mut Frame, area: Rect) {
     let penger = match fs::read_to_string(PENGER_FILE_PATH) {
         Ok(penger) => penger,
         Err(e) => format!("{e}"),

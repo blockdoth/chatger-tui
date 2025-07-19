@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use chrono::{Duration, Utc};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -10,11 +9,10 @@ use ratatui::widgets::{Block, Borders, Padding, Paragraph, Wrap};
 use crate::network::protocol::UserStatus;
 use crate::tui::GlobalState;
 use crate::tui::chat::{ChannelStatus, ChatMessageStatus, User};
-use crate::tui::events::UserId;
 use crate::tui::screens::chat::borders::{
     borders_channel, borders_chat_history, borders_input, borders_logs, borders_profile, borders_server_status, borders_users,
 };
-use crate::tui::screens::chat::{ChatFocus, ChatState};
+use crate::tui::screens::chat::{ChatFocus, ChatState, ServerConnectionStatus};
 
 const HEADER_STYLE: Style = Style {
     fg: None,
@@ -51,7 +49,7 @@ pub fn draw_main(global_state: &GlobalState, chat_state: &ChatState, frame: &mut
     render_info(global_state, chat_state, frame, info_area);
 }
 
-pub fn split_app_info_areas(global_state: &GlobalState, area: Rect) -> (Rect, Rect) {
+pub fn split_app_info_areas(_global_state: &GlobalState, area: Rect) -> (Rect, Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(0)
@@ -60,7 +58,7 @@ pub fn split_app_info_areas(global_state: &GlobalState, area: Rect) -> (Rect, Re
     (chunks[0], chunks[1])
 }
 
-fn split_channel_chat_user_areas(global_state: &GlobalState, chat_state: &ChatState, area: Rect) -> (Rect, Rect, Rect) {
+fn split_channel_chat_user_areas(_global_state: &GlobalState, chat_state: &ChatState, area: Rect) -> (Rect, Rect, Rect) {
     let channel_width_offset = if chat_state.focus == ChatFocus::Channels { 0 } else { 1 };
     let users_width_offset = if chat_state.focus == ChatFocus::Users { 1 } else { 0 };
 
@@ -76,7 +74,7 @@ fn split_channel_chat_user_areas(global_state: &GlobalState, chat_state: &ChatSt
     (chunks[0], chunks[1], chunks[2])
 }
 
-fn split_channels_profile_areas(global_state: &GlobalState, chat_state: &ChatState, area: Rect) -> (Rect, Rect) {
+fn split_channels_profile_areas(_global_state: &GlobalState, _chat_state: &ChatState, area: Rect) -> (Rect, Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(0)
@@ -85,7 +83,7 @@ fn split_channels_profile_areas(global_state: &GlobalState, chat_state: &ChatSta
     (chunks[0], chunks[1])
 }
 
-fn split_users_server_areas(global_state: &GlobalState, chat_state: &ChatState, area: Rect) -> (Rect, Rect) {
+fn split_users_server_areas(_global_state: &GlobalState, _chat_state: &ChatState, area: Rect) -> (Rect, Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(0)
@@ -94,7 +92,7 @@ fn split_users_server_areas(global_state: &GlobalState, chat_state: &ChatState, 
     (chunks[0], chunks[1])
 }
 
-fn split_chatlog_chatinput_areas(global_state: &GlobalState, chat_state: &ChatState, area: Rect) -> (Rect, Rect) {
+fn split_chatlog_chatinput_areas(_global_state: &GlobalState, chat_state: &ChatState, area: Rect) -> (Rect, Rect) {
     let input_height = if let ChatFocus::ChatInput(_) = chat_state.focus { 5 } else { 4 };
 
     let chunks = Layout::default()
@@ -106,7 +104,7 @@ fn split_chatlog_chatinput_areas(global_state: &GlobalState, chat_state: &ChatSt
 }
 
 // Done manually because of issues with border highlights creating small shifts
-fn split_chat_log_areas(global_state: &GlobalState, chat_state: &ChatState, area: Rect) -> (Rect, Rect) {
+fn split_chat_log_areas(_global_state: &GlobalState, chat_state: &ChatState, area: Rect) -> (Rect, Rect) {
     let left_width = area.width / 2 + (area.width % 2);
     let right_width = area.width - left_width;
 
@@ -131,7 +129,7 @@ fn split_chat_log_areas(global_state: &GlobalState, chat_state: &ChatState, area
     (left, right)
 }
 
-fn render_channels(global_state: &GlobalState, chat_state: &ChatState, frame: &mut Frame, area: Rect) {
+fn render_channels(_global_state: &GlobalState, chat_state: &ChatState, frame: &mut Frame, area: Rect) {
     let channels: Vec<Line> = if chat_state.channels.is_empty() {
         vec![Line::from(Span::styled(
             "This server has no channels",
@@ -168,7 +166,7 @@ fn render_channels(global_state: &GlobalState, chat_state: &ChatState, frame: &m
     frame.render_widget(widget, area);
 }
 
-fn render_profile(global_state: &GlobalState, chat_state: &ChatState, frame: &mut Frame, area: Rect) {
+fn render_profile(_global_state: &GlobalState, chat_state: &ChatState, frame: &mut Frame, area: Rect) {
     let (borders, border_style, border_corners) = borders_profile(chat_state);
 
     let username = Span::styled(
@@ -188,12 +186,13 @@ fn render_profile(global_state: &GlobalState, chat_state: &ChatState, frame: &mu
     frame.render_widget(widget, area);
 }
 
-fn render_server_status(global_state: &GlobalState, chat_state: &ChatState, frame: &mut Frame, area: Rect) {
+fn render_server_status(_global_state: &GlobalState, chat_state: &ChatState, frame: &mut Frame, area: Rect) {
     let (borders, border_style, border_corners) = borders_server_status(chat_state);
-    let connection_status = if Utc::now() - chat_state.last_healthcheck < Duration::seconds(10) {
-        Span::styled("Server: [Connected]".to_owned(), Style::default().fg(Color::Green))
-    } else {
-        Span::styled("Server: [Disconnected]".to_owned(), Style::default().fg(Color::LightRed))
+    let connection_status = match chat_state.server_connection_status {
+        ServerConnectionStatus::Connected => Span::styled("Server: [Connected]".to_owned(), Style::default().fg(Color::Green)),
+        ServerConnectionStatus::Unhealthy => Span::styled("Server: [Unhealthy]".to_owned(), Style::default().fg(Color::LightYellow)),
+        ServerConnectionStatus::Disconnected => Span::styled("Server: [Disconnected]".to_owned(), Style::default().fg(Color::LightRed)),
+        ServerConnectionStatus::Reconnecting => Span::styled("Server: [Reconnecting]".to_owned(), Style::default().fg(Color::LightYellow)),
     };
 
     let lines = vec![Line::from(Span::from("")), Line::from(connection_status)];
@@ -220,7 +219,7 @@ fn render_chat_history(global_state: &GlobalState, chat_state: &ChatState, frame
 
     let chat_log = chat_state.chat_history.get(&channel_id).unwrap_or(empty);
 
-    let mut chatlog_lines: Vec<Line> = if chat_log.is_empty() {
+    let chatlog_lines: Vec<Line> = if chat_log.is_empty() {
         vec![Line::from(Span::styled(
             format!("Be the first to message in #{channel_name}"),
             Style::default().add_modifier(Modifier::DIM | Modifier::ITALIC),
@@ -315,7 +314,7 @@ fn render_chat_history(global_state: &GlobalState, chat_state: &ChatState, frame
     frame.render_widget(widget, area);
 }
 
-fn render_chat_input(global_state: &GlobalState, chat_state: &ChatState, frame: &mut Frame, area: Rect) {
+fn render_chat_input(_global_state: &GlobalState, chat_state: &ChatState, frame: &mut Frame, area: Rect) {
     let (channel_id, channel_name) = match chat_state.channels.get(chat_state.active_channel_idx) {
         Some(channel) => (channel.id, channel.name.clone()),
         None => (0, "Should not be seen".to_owned()),
@@ -379,7 +378,7 @@ fn render_chat_input(global_state: &GlobalState, chat_state: &ChatState, frame: 
     frame.render_widget(widget, area);
 }
 
-fn render_users(global_state: &GlobalState, chat_state: &ChatState, frame: &mut Frame, area: Rect) {
+fn render_users(_global_state: &GlobalState, chat_state: &ChatState, frame: &mut Frame, area: Rect) {
     let (mut online_users, mut offline_users): (Vec<&User>, Vec<&User>) = chat_state
         .users
         .iter()

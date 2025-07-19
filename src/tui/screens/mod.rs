@@ -8,6 +8,7 @@ use async_trait::async_trait;
 use ratatui::Frame;
 use ratatui::crossterm::event::Event;
 use tokio::sync::mpsc::{self, Sender};
+use tokio::time::Instant;
 
 use crate::cli::AppConfig;
 use crate::network::client::{Client, ServerConnectionStatus};
@@ -41,6 +42,9 @@ pub struct GlobalState {
     log_scroll_offset: usize,
     show_logs: bool,
     should_quit: bool,
+    fps: u32,
+    frame_counter: u32,
+    last_fps_check: Instant,
 }
 
 #[derive(Clone)]
@@ -58,6 +62,9 @@ impl State {
                 show_logs: false,
                 log_scroll_offset: 0,
                 logs: vec![],
+                fps: 0,
+                frame_counter: 0,
+                last_fps_check: Instant::now(),
             },
             current_state: initial_state.clone(),
             state_map: HashMap::new(),
@@ -69,6 +76,14 @@ impl State {
 impl Tui<TuiEvent> for State {
     /// Draws the UI layout and content.
     fn draw_ui(&mut self, frame: &mut Frame) {
+        self.global_state.frame_counter += 1;
+
+        let now = Instant::now();
+        if now.duration_since(self.global_state.last_fps_check) >= Duration::from_secs(1) {
+            self.global_state.fps = self.global_state.frame_counter;
+            self.global_state.frame_counter = 0;
+            self.global_state.last_fps_check = now;
+        }
         match &mut self.current_state {
             AppState::Chat(chat_state) => draw_main(&self.global_state, chat_state, frame),
             AppState::Login(login_state) => draw_login(&self.global_state, login_state, frame),

@@ -22,9 +22,16 @@ use crate::network::protocol::client::{
 use crate::network::protocol::header::{Header, PacketType};
 use crate::network::protocol::server::{Deserialize, HealthCheckPacket, HealthKind, ServerPayload};
 use crate::tui::events::TuiEvent;
-use crate::tui::screens::chat::ServerConnectionStatus;
 
 pub const MAX_MESSAGE_LENGTH: usize = 16 * 1024; // TODO figure out actual max size
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum ServerConnectionStatus {
+    Connected,
+    Unhealthy,
+    Disconnected,
+    Reconnecting,
+}
 
 #[derive(Clone)]
 pub struct InteractedTimeStamp {

@@ -10,11 +10,12 @@ use log::{debug, error, info};
 use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
 
-use crate::network::client::Client;
+use crate::network::client::{Client, ServerConnectionStatus};
 use crate::network::protocol::UserStatus;
 use crate::tui::events::TuiEvent;
-use crate::tui::screens::chat::{ChatFocus, ServerConnectionStatus, UserProfile};
-use crate::tui::{AppState, ChatState, Screen, State};
+use crate::tui::screens::Screen;
+use crate::tui::screens::chat::{ChatFocus, ChatState, UserProfile};
+use crate::tui::{AppState, State};
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum LoginFocus {

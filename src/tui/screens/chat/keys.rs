@@ -1,7 +1,7 @@
 use ratatui::crossterm::event::{Event, KeyCode, KeyModifiers};
 
-use crate::tui::GlobalState;
 use crate::tui::events::TuiEvent;
+use crate::tui::screens::GlobalState;
 use crate::tui::screens::chat::ChatFocus;
 
 pub fn handle_chat_key_event(global_state: &GlobalState, event: Event, focus: ChatFocus) -> Option<TuiEvent> {

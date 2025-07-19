@@ -2,8 +2,8 @@ use ratatui::style::{Color, Style};
 use ratatui::symbols::{border, line};
 use ratatui::widgets::Borders;
 
-use crate::tui::screens::chat::ChatFocus;
-use crate::tui::{ChatState, GlobalState};
+use crate::tui::screens::GlobalState;
+use crate::tui::screens::chat::{ChatFocus, ChatState};
 
 pub fn borders_channel(state: &ChatState) -> (Borders, Style, border::Set) {
     match state.focus {

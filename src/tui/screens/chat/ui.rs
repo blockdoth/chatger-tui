@@ -6,13 +6,14 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Block, Borders, Padding, Paragraph, Wrap};
 
+use crate::network::client::ServerConnectionStatus;
 use crate::network::protocol::UserStatus;
-use crate::tui::GlobalState;
 use crate::tui::chat::{ChannelStatus, ChatMessageStatus, User};
+use crate::tui::screens::GlobalState;
 use crate::tui::screens::chat::borders::{
     borders_channel, borders_chat_history, borders_input, borders_logs, borders_profile, borders_server_status, borders_users,
 };
-use crate::tui::screens::chat::{ChatFocus, ChatState, ServerConnectionStatus};
+use crate::tui::screens::chat::{ChatFocus, ChatState};
 
 const HEADER_STYLE: Style = Style {
     fg: None,

@@ -11,11 +11,12 @@ use log::{debug, error, info};
 use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
 
-use crate::network::client::Client;
+use crate::network::client::{Client, ServerConnectionStatus};
 use crate::network::protocol::UserStatus;
 use crate::tui::chat::{ChatMessage, ChatMessageStatus, DisplayChannel, User};
 use crate::tui::events::{ChannelId, MessageId, TuiEvent, UserId};
-use crate::tui::{AppState, Screen, State};
+use crate::tui::screens::Screen;
+use crate::tui::{AppState, State};
 
 #[derive(Clone, Debug)]
 pub struct UserProfile {
@@ -31,13 +32,6 @@ pub enum ChatFocus {
     ChatInput(usize),
     Users,
     Logs,
-}
-#[derive(Debug, PartialEq, Clone)]
-pub enum ServerConnectionStatus {
-    Connected,
-    Unhealthy,
-    Disconnected,
-    Reconnecting,
 }
 
 #[derive(Clone, Debug)]

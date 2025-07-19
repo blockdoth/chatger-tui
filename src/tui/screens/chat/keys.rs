@@ -1,10 +1,11 @@
+use log::info;
 use ratatui::crossterm::event::{Event, KeyCode, KeyModifiers};
 
 use crate::tui::events::TuiEvent;
 use crate::tui::screens::GlobalState;
 use crate::tui::screens::chat::ChatFocus;
 
-pub fn handle_chat_key_event(global_state: &GlobalState, event: Event, focus: ChatFocus) -> Option<TuiEvent> {
+pub fn handle_chat_key_event(event: Event, focus: ChatFocus, global_state: &GlobalState) -> Option<TuiEvent> {
     use KeyCode::*;
     match event {
         Event::Key(key_event) => match focus {
@@ -63,6 +64,8 @@ pub fn handle_chat_key_event(global_state: &GlobalState, event: Event, focus: Ch
                 _ => None,
             },
         },
+        Event::FocusLost => Some(TuiEvent::FocusLost),
+        Event::FocusGained => Some(TuiEvent::FocusGained),
         _ => None,
     }
 }

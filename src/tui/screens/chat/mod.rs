@@ -23,6 +23,7 @@ pub struct UserProfile {
     pub user_id: UserId,
     pub username: String,
     pub password: String,
+    pub status: UserStatus,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -51,6 +52,7 @@ pub struct ChatState {
     pub users_typing: HashMap<ChannelId, HashMap<UserId, String>>,
     pub is_typing: bool,
     pub time_since_last_typing: Instant,
+    pub time_since_last_focused: Option<Instant>,
 }
 
 pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, client: &mut Client) -> Result<()> {
@@ -64,7 +66,7 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, client: &mut Cl
     match event {
         Exit => {
             tui.global_state.should_quit = true;
-            client.push_user_status(UserStatus::Offline).await?;
+            client.send_user_status(UserStatus::Offline).await?;
         }
         ToggleLogs => {
             tui.global_state.show_logs = !tui.global_state.show_logs;
@@ -80,7 +82,7 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, client: &mut Cl
             if let Some(channel_id) = chat_state.channels.get(chat_state.active_channel_idx)
                 && chat_state.is_typing
             {
-                client.push_typing(channel_id.id, false).await?;
+                client.send_typing(channel_id.id, false).await?;
             }
         }
         ChannelDown => {
@@ -88,7 +90,7 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, client: &mut Cl
             if let Some(channel_id) = chat_state.channels.get(chat_state.active_channel_idx)
                 && chat_state.is_typing
             {
-                client.push_typing(channel_id.id, false).await?;
+                client.send_typing(channel_id.id, false).await?;
             }
         }
         ChatFocusChange(focus) => chat_state.focus = focus,
@@ -228,7 +230,7 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, client: &mut Cl
                 chat_state.time_since_last_typing = Instant::now();
                 if !chat_state.is_typing {
                     chat_state.is_typing = true;
-                    client.push_typing(channel_id.id, true).await?;
+                    client.send_typing(channel_id.id, true).await?;
                 }
             }
         }
@@ -338,7 +340,7 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, client: &mut Cl
                 if let Some(channel_id) = chat_state.channels.get(chat_state.active_channel_idx)
                     && chat_state.is_typing
                 {
-                    client.push_typing(channel_id.id, false).await?;
+                    client.send_typing(channel_id.id, false).await?;
                 }
                 chat_state.chat_history.values_mut().for_each(|messages| {
                     messages.iter_mut().for_each(|msg| {
@@ -388,7 +390,7 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, client: &mut Cl
         TypingExpired => {
             chat_state.is_typing = false;
             if let Some(channel_id) = chat_state.channels.get(chat_state.active_channel_idx) {
-                client.push_typing(channel_id.id, false).await?;
+                client.send_typing(channel_id.id, false).await?;
             }
         }
         PossiblyUnhealthyConnection => {
@@ -421,6 +423,18 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, client: &mut Cl
                 client.disconnect()?;
                 chat_state.server_connection_status = ServerConnectionStatus::Reconnecting; // TODO figure out when to actually go in a Disconnected state
             }
+        }
+        FocusGained => {
+            chat_state.time_since_last_focused = None;
+            chat_state.current_user.status = UserStatus::Online;
+            client.send_user_status(UserStatus::Online).await?;
+        }
+        FocusLost => {
+            chat_state.time_since_last_focused = Some(Instant::now());
+        }
+        IdleUser => {
+            chat_state.current_user.status = UserStatus::Idle;
+            client.send_user_status(UserStatus::Idle).await?;
         }
         _ => {}
     }

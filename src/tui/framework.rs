@@ -7,7 +7,7 @@ use std::vec;
 use anyhow::Result;
 use async_trait::async_trait;
 use log::{LevelFilter, debug, error, info};
-use ratatui::crossterm::event::{Event, poll, read};
+use ratatui::crossterm::event::{DisableFocusChange, DisableMouseCapture, EnableFocusChange, EnableMouseCapture, Event, poll, read};
 use ratatui::crossterm::execute;
 use ratatui::crossterm::terminal::{Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode};
 use ratatui::prelude::CrosstermBackend;
@@ -181,7 +181,7 @@ where
     fn setup_terminal() -> Result<Terminal<CrosstermBackend<io::Stdout>>> {
         enable_raw_mode()?;
         let mut stdout = stdout();
-        execute!(stdout, EnterAlternateScreen, Clear(ClearType::All))?;
+        execute!(stdout, EnterAlternateScreen, EnableMouseCapture, EnableFocusChange)?;
         let backend = CrosstermBackend::new(stdout);
         Terminal::new(backend).map_err(Into::into)
     }
@@ -189,7 +189,7 @@ where
     /// Restores the terminal to its original state after exiting the application.
     fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<()> {
         disable_raw_mode()?;
-        execute!(terminal.backend_mut(), Clear(ClearType::All), LeaveAlternateScreen)?;
+        execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture, DisableFocusChange)?;
         terminal.show_cursor()?;
         Ok(())
     }

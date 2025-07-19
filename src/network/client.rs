@@ -238,7 +238,7 @@ impl Client {
         .await
     }
 
-    pub async fn push_typing(&mut self, channel_id: u64, is_typing: bool) -> Result<()> {
+    pub async fn send_typing(&mut self, channel_id: u64, is_typing: bool) -> Result<()> {
         let interacted_ts = self.time_since_last_transmit.clone();
         let mut write_stream = self.get_stream().await?;
 
@@ -251,7 +251,7 @@ impl Client {
         .await
     }
 
-    pub async fn push_user_status(&mut self, status: UserStatus) -> Result<()> {
+    pub async fn send_user_status(&mut self, status: UserStatus) -> Result<()> {
         let interacted_ts = self.time_since_last_transmit.clone();
         let mut write_stream = self.get_stream().await?;
 

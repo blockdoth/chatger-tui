@@ -50,6 +50,9 @@ pub enum TuiEvent {
     TypingExpired,
     PossiblyUnhealthyConnection,
     Reconnect,
+    FocusGained,
+    FocusLost,
+    IdleUser,
 }
 
 impl FromLog for TuiEvent {

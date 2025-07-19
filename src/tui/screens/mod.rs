@@ -21,6 +21,8 @@ use crate::tui::screens::login::keys::handle_login_key_event;
 use crate::tui::screens::login::ui::draw_login;
 use crate::tui::screens::login::{InputStatus, LoginFocus, LoginState, handle_login_event};
 
+const USER_TIME_UNTIL_IDLE: u64 = 60;
+
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum Screen {
     Chat(String, String, String),
@@ -76,7 +78,7 @@ impl Tui<TuiEvent> for State {
     fn process_event(&mut self, event: Event) -> Option<TuiEvent> {
         match &mut self.current_state {
             AppState::Login(login_state) => handle_login_key_event(event, login_state.focus),
-            AppState::Chat(chat_state) => handle_chat_key_event(&self.global_state, event, chat_state.focus),
+            AppState::Chat(chat_state) => handle_chat_key_event(event, chat_state.focus, &self.global_state),
         }
     }
 
@@ -103,6 +105,13 @@ impl Tui<TuiEvent> for State {
             {
                 client.time_since_last_reconnect.update();
                 event_send.send(TuiEvent::Reconnect).await?;
+            }
+
+            if let Some(time) = state.time_since_last_focused
+                && time.elapsed() > Duration::from_secs(USER_TIME_UNTIL_IDLE)
+            {
+                event_send.send(TuiEvent::IdleUser).await?;
+                state.time_since_last_focused = None;
             }
         }
 

@@ -170,10 +170,9 @@ fn render_channels(_global_state: &GlobalState, chat_state: &ChatState, frame: &
 fn render_profile(_global_state: &GlobalState, chat_state: &ChatState, frame: &mut Frame, area: Rect) {
     let (borders, border_style, border_corners) = borders_profile(chat_state);
 
-    let username = Span::styled(
-        chat_state.current_user.username.clone().to_string(),
-        Style::default().fg(Color::LightGreen),
-    );
+    let (symbol, user_status_style) = user_status(&chat_state.current_user.status);
+
+    let username = Span::styled(format!("{symbol} {}", chat_state.current_user.username), user_status_style);
 
     let lines = vec![Line::from(Span::from("")), Line::from(username)];
 
@@ -513,5 +512,14 @@ fn is_typing(is_typing: &Vec<String>) -> String {
 
             string
         }
+    }
+}
+
+fn user_status(status: &UserStatus) -> (String, Style) {
+    match status {
+        UserStatus::Offline => ("●".to_owned(), Style::default().fg(Color::Gray).add_modifier(Modifier::DIM)),
+        UserStatus::Online => ("●".to_owned(), Style::default().fg(Color::Green)),
+        UserStatus::Idle => ("●".to_owned(), Style::default().fg(Color::Yellow)),
+        UserStatus::DoNotDisturb => ("●".to_owned(), Style::default().fg(Color::Red)),
     }
 }

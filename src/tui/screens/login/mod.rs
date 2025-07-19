@@ -128,7 +128,7 @@ pub async fn handle_login_event(tui: &mut State, event: TuiEvent, client: &mut C
                             .login(login_state.username_input.clone(), login_state.password_input.clone())
                             .await?;
                         login_state.server_address = Some(server_address);
-                        client.push_user_status(UserStatus::Online).await?;
+                        client.send_user_status(UserStatus::Online).await?;
                     }
                     Err(e) => {
                         if let Some(err) = e.downcast_ref::<io::Error>() {
@@ -172,6 +172,7 @@ pub async fn handle_login_event(tui: &mut State, event: TuiEvent, client: &mut C
                         active_channel_idx: 0,
                         current_user: UserProfile {
                             user_id,
+                            status: UserStatus::Online,
                             username: login_state.username_input.clone(),
                             password: login_state.password_input.clone(),
                         },
@@ -183,6 +184,7 @@ pub async fn handle_login_event(tui: &mut State, event: TuiEvent, client: &mut C
                         users_typing: HashMap::new(),
                         is_typing: false,
                         time_since_last_typing: Instant::now(),
+                        time_since_last_focused: None,
                     }));
                 };
             } else {

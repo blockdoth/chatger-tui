@@ -32,7 +32,7 @@ pub enum ChatFocus {
     ChatHistory,
     ChatHistorySelection,
     ChatInput(usize),
-    Users,
+    Users(usize),
     Logs,
 }
 
@@ -227,6 +227,9 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, client: &mut Cl
             ChatFocus::Logs => {
                 tui.global_state.log_scroll_offset = tui.global_state.log_scroll_offset.saturating_sub(1);
             }
+            ChatFocus::Users(i) if i + 2 < chat_state.users.len() => { // Not sure why + 2, should be +1
+              chat_state.focus = ChatFocus::Users(i + 1)
+            }
             _ => {}
         },
         ScrollUp => match chat_state.focus {
@@ -241,6 +244,9 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, client: &mut Cl
             ChatFocus::Logs => {
                 tui.global_state.log_scroll_offset = tui.global_state.log_scroll_offset.saturating_add(1);
             }
+            ChatFocus::Users(i) if i > 0 => {
+              chat_state.focus = ChatFocus::Users(i - 1)
+            }            
             _ => {}
         },
         InputChar(chr) => {

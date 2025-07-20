@@ -90,7 +90,7 @@ pub fn borders_chat_history(global_state: &GlobalState, chat_state: &ChatState) 
                 ..border::PLAIN
             },
         ),
-        ChatFocus::Users => (
+        ChatFocus::Users(_) => (
             Borders::TOP | Borders::LEFT,
             Style::default(),
             border::Set {
@@ -116,14 +116,14 @@ pub fn borders_chat_history(global_state: &GlobalState, chat_state: &ChatState) 
             Borders::TOP | Borders::LEFT | Borders::BOTTOM,
             Style::default(),
             border::Set {
-                bottom_left: if global_state.show_logs {
-                    line::NORMAL.vertical_right
-                } else {
-                    line::NORMAL.cross
-                },
+                bottom_left: line::NORMAL.cross,
                 bottom_right: line::NORMAL.horizontal_up,
                 top_right: line::NORMAL.horizontal_down,
-                top_left: line::NORMAL.horizontal_down,
+                top_left: if chat_state.replying_to.is_some() {
+                  line::NORMAL.cross
+                }else {
+                  line::NORMAL.horizontal_down
+                },
                 ..border::PLAIN
             },
         ),
@@ -156,7 +156,7 @@ pub fn borders_reply_bar(state: &ChatState) -> (Borders, Style, border::Set) {
             Borders::LEFT | Borders::BOTTOM | Borders::RIGHT,
             Style::default(),
             border::Set {
-                bottom_left: line::NORMAL.vertical_right,
+                bottom_left: line::NORMAL.cross,
                 bottom_right: if state.replying_to.is_some() {
                     line::NORMAL.vertical_right
                 } else {
@@ -176,7 +176,7 @@ pub fn borders_reply_bar(state: &ChatState) -> (Borders, Style, border::Set) {
                 ..border::PLAIN
             },
         ),
-        ChatFocus::Users => (
+        ChatFocus::Users(_) => (
             Borders::LEFT | Borders::TOP,
             Style::default(),
             border::Set {
@@ -221,7 +221,7 @@ pub fn borders_input(state: &ChatState) -> (Borders, Style, border::Set) {
                 ..border::PLAIN
             },
         ),
-        ChatFocus::Users => (
+        ChatFocus::Users(_) => (
             Borders::BOTTOM | Borders::LEFT | Borders::TOP,
             Style::default(),
             border::Set {
@@ -261,7 +261,7 @@ pub fn borders_users(state: &ChatState) -> (Borders, Style, border::Set) {
                 ..border::PLAIN
             },
         ),
-        ChatFocus::Users => (
+        ChatFocus::Users(_) => (
             Borders::ALL,
             Style::default().fg(Color::Cyan),
             border::Set {
@@ -308,7 +308,7 @@ pub fn borders_logs(state: &ChatState) -> (Borders, Style, border::Set) {
                 ..border::PLAIN
             },
         ),
-        ChatFocus::Users => (
+        ChatFocus::Users(_) => (
             Borders::TOP | Borders::LEFT,
             Style::default(),
             border::Set {
@@ -348,7 +348,7 @@ pub fn borders_logs(state: &ChatState) -> (Borders, Style, border::Set) {
 
 pub fn borders_server_status(state: &ChatState) -> (Borders, Style, border::Set) {
     match state.focus {
-        ChatFocus::Users => (
+        ChatFocus::Users(_) => (
             Borders::LEFT | Borders::RIGHT | Borders::BOTTOM,
             Style::default(),
             border::Set {

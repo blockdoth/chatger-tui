@@ -54,6 +54,7 @@ pub enum TuiEvent {
     FocusLost,
     IdleUser,
     Reply,
+    ViewUsers,
 }
 
 impl FromLog for TuiEvent {

@@ -21,7 +21,7 @@ pub fn handle_chat_key_event(event: Event, focus: ChatFocus, global_state: &Glob
             ChatFocus::ChatHistory => match key_event.code {
                 Left => Some(TuiEvent::ChatFocusChange(ChatFocus::Channels)),
                 Right if global_state.show_logs => Some(TuiEvent::ChatFocusChange(ChatFocus::Logs)),
-                Right => Some(TuiEvent::ChatFocusChange(ChatFocus::Users)),
+                Right => Some(TuiEvent::ChatFocusChange(ChatFocus::Users(0))),
                 Up => Some(TuiEvent::ScrollUp),
                 Down => Some(TuiEvent::ScrollDown),
                 Char('s') | Char('S') => Some(TuiEvent::ChatFocusChange(ChatFocus::ChatHistorySelection)),
@@ -34,7 +34,7 @@ pub fn handle_chat_key_event(event: Event, focus: ChatFocus, global_state: &Glob
             ChatFocus::ChatHistorySelection => match key_event.code {
                 Left => Some(TuiEvent::ChatFocusChange(ChatFocus::Channels)),
                 Right if global_state.show_logs => Some(TuiEvent::ChatFocusChange(ChatFocus::Logs)),
-                Right => Some(TuiEvent::ChatFocusChange(ChatFocus::Users)),
+                Right => Some(TuiEvent::ChatFocusChange(ChatFocus::Users(0))),
                 Up => Some(TuiEvent::ScrollUp),
                 Down => Some(TuiEvent::ScrollDown),
                 Char('s') | Char('S') | Esc => Some(TuiEvent::ChatFocusChange(ChatFocus::ChatHistory)),
@@ -57,9 +57,12 @@ pub fn handle_chat_key_event(event: Event, focus: ChatFocus, global_state: &Glob
 
                 _ => None,
             },
-            ChatFocus::Users => match key_event.code {
+            ChatFocus::Users(_) => match key_event.code {
                 Left if global_state.show_logs => Some(TuiEvent::ChatFocusChange(ChatFocus::Logs)),
                 Left => Some(TuiEvent::ChatFocusChange(ChatFocus::ChatHistory)),
+                Up => Some(TuiEvent::ScrollUp),
+                Down => Some(TuiEvent::ScrollDown),                
+                Char('v') | Char('V') => Some(TuiEvent::ViewUsers),
                 Char('q') | Char('Q') => Some(TuiEvent::Exit),
                 Char('l') | Char('L') => Some(TuiEvent::ToggleLogs),
                 Char(_) => Some(TuiEvent::ChatFocusChange(ChatFocus::ChatInput(0))),
@@ -67,7 +70,7 @@ pub fn handle_chat_key_event(event: Event, focus: ChatFocus, global_state: &Glob
             },
             ChatFocus::Logs => match key_event.code {
                 Left => Some(TuiEvent::ChatFocusChange(ChatFocus::ChatHistory)),
-                Right => Some(TuiEvent::ChatFocusChange(ChatFocus::Users)),
+                Right => Some(TuiEvent::ChatFocusChange(ChatFocus::Users(0))),
                 Up => Some(TuiEvent::ScrollUp),
                 Down => Some(TuiEvent::ScrollDown),
                 Char('q') | Char('Q') => Some(TuiEvent::Exit),

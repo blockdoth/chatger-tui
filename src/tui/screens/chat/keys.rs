@@ -12,11 +12,10 @@ pub fn handle_chat_key_event(event: Event, focus: ChatFocus, global_state: &Glob
             ChatFocus::Channels => match key_event.code {
                 Up => Some(TuiEvent::ChannelUp),
                 Down => Some(TuiEvent::ChannelDown),
-                Right | Enter => Some(TuiEvent::ChatFocusChange(ChatFocus::ChatInput(0))),
+                Right | Enter => Some(TuiEvent::ChatFocusChange(ChatFocus::ChatHistory)),
                 Char('q') | Char('Q') => Some(TuiEvent::Exit),
                 Char('l') | Char('L') => Some(TuiEvent::ToggleLogs),
                 Char('x') | Char('X') => Some(TuiEvent::Logout),
-                Char(_) => Some(TuiEvent::ChatFocusChange(ChatFocus::ChatInput(0))),
                 _ => None,
             },
             ChatFocus::ChatHistory => match key_event.code {

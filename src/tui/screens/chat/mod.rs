@@ -54,8 +54,7 @@ pub struct ChatState {
     pub is_typing: bool,
     pub time_since_last_typing: Instant,
     pub time_since_last_focused: Option<Instant>,
-    pub message_selection: usize,
-    pub replying_to: Option<UserId>,
+    pub replying_to: Option<ChatMessage>,
 }
 
 pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, client: &mut Client) -> Result<()> {
@@ -167,12 +166,17 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, client: &mut Cl
                 && !input_line.trim().is_empty()
             // Don't send empty or whitespace-only messages
             {
+                let reply_id = if let Some(message) = &chat_state.replying_to {
+                    message.message_id
+                } else {
+                    0
+                };
                 let temp_message_id = chat_state.incrementing_ack_id;
                 let message = ChatMessage {
                     message_id: temp_message_id,
                     author_name: chat_state.current_user.username.to_owned(),
                     author_id: chat_state.current_user.user_id,
-                    reply_id: 0, // TODO replies
+                    reply_id,
                     timestamp: Utc::now(),
                     message: input_line.clone(),
                     status: ChatMessageStatus::Sending,
@@ -182,7 +186,8 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, client: &mut Cl
 
                 chat_state.chat_history.entry(channel.id).or_default().push(message);
 
-                client.send_chat_message(channel.id, 0, input_line.clone(), vec![]).await?; // TODO improve
+                client.send_chat_message(channel.id, reply_id, input_line.clone(), vec![]).await?; // TODO improve
+                chat_state.replying_to = None;
                 chat_state.focus = ChatFocus::ChatInput(0);
                 *input_line = "".to_owned();
             }
@@ -209,6 +214,16 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, client: &mut Cl
             ChatFocus::ChatHistory => {
                 chat_state.chat_scroll_offset = chat_state.chat_scroll_offset.saturating_sub(1);
             }
+            ChatFocus::ChatHistorySelection => {
+                if let Some(channel) = chat_state.channels.get_mut(chat_state.active_channel_idx)
+                    && let Some(chatlog) = chat_state.chat_history.get(&channel.id)
+                {
+                    let max_selection = chatlog.len().saturating_sub(chat_state.chat_scroll_offset + 1);
+                    if channel.selection_offset < max_selection {
+                        channel.selection_offset = channel.selection_offset.saturating_add(1);
+                    }
+                }
+            }
             ChatFocus::Logs => {
                 tui.global_state.log_scroll_offset = tui.global_state.log_scroll_offset.saturating_sub(1);
             }
@@ -217,6 +232,11 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, client: &mut Cl
         ScrollUp => match chat_state.focus {
             ChatFocus::ChatHistory => {
                 chat_state.chat_scroll_offset = chat_state.chat_scroll_offset.saturating_add(1);
+            }
+            ChatFocus::ChatHistorySelection => {
+                if let Some(channel) = chat_state.channels.get_mut(chat_state.active_channel_idx) {
+                    channel.selection_offset = channel.selection_offset.saturating_sub(1);
+                }
             }
             ChatFocus::Logs => {
                 tui.global_state.log_scroll_offset = tui.global_state.log_scroll_offset.saturating_add(1);
@@ -321,7 +341,7 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, client: &mut Cl
 
                 let display_message = ChatMessage {
                     message_id: message.message_id,
-                    reply_id: 0,
+                    reply_id: message.reply_id,
                     author_name,
                     author_id: message.user_id,
                     timestamp,
@@ -440,11 +460,15 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, client: &mut Cl
             client.send_user_status(UserStatus::Idle).await?;
         }
         Reply => {
-            if chat_state.replying_to.is_none() {
-                info!("Reply on");
-                chat_state.replying_to = Some(0);
+            if let Some(channel) = chat_state.channels.get(chat_state.active_channel_idx)
+                && let Some(chatlog) = chat_state.chat_history.get(&channel.id)
+                && let Some(message) = chatlog.get(chat_state.chat_scroll_offset + channel.selection_offset)
+            {
+                chat_state.replying_to = match &chat_state.replying_to {
+                    Some(replying_to) if message == replying_to => None,
+                    _ => Some(message.clone()),
+                };
             } else {
-                info!("Reply off");
                 chat_state.replying_to = None;
             };
         }

@@ -226,10 +226,10 @@ fn render_chat_history(global_state: &GlobalState, chat_state: &ChatState, frame
     // TODO make less ugly
     let empty = &vec![];
 
-    let (channel_id, channel_name) = if let Some(channel) = &chat_state.channels.get(chat_state.active_channel_idx) {
-        (channel.id, channel.name.clone())
+    let (channel_id, channel_name, selection_offset) = if let Some(channel) = &chat_state.channels.get(chat_state.active_channel_idx) {
+        (channel.id, channel.name.clone(), channel.selection_offset)
     } else {
-        (0, "Should not be shown".to_string())
+        (0, "Should not be shown".to_string(), 0)
     };
 
     let chat_log = chat_state.chat_history.get(&channel_id).unwrap_or(empty);
@@ -246,47 +246,89 @@ fn render_chat_history(global_state: &GlobalState, chat_state: &ChatState, frame
             .saturating_sub((area.height.div_ceil(2)).saturating_sub(1) as usize)
             .saturating_sub(chat_state.chat_scroll_offset);
 
+        let text_width: usize = area.width.saturating_sub(3).into();
+
         chat_log
             .iter()
             .skip(start_index)
-            .flat_map(|chat_message| {
-                let timestamp = chat_message.timestamp.format("%H:%M:%S").to_string();
+            .enumerate()
+            .flat_map(|(index, message)| {
+                use ChatMessageStatus::*;
+                let message_is_focused =
+                    (chat_state.focus == ChatFocus::ChatHistorySelection || chat_state.replying_to.is_some()) && index == selection_offset;
 
-                let header_style = match chat_message.status {
-                    ChatMessageStatus::Send => Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
-                    ChatMessageStatus::Sending => Style::default().fg(Color::Yellow).add_modifier(Modifier::DIM | Modifier::ITALIC),
-                    ChatMessageStatus::FailedToSend => Style::default().fg(Color::LightRed).add_modifier(Modifier::DIM | Modifier::ITALIC),
+                let timestamp = message.timestamp.format("%H:%M:%S").to_string();
+
+                let mut header_style = match message.status {
+                    Send => Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                    Sending => Style::default().fg(Color::Yellow).add_modifier(Modifier::DIM | Modifier::ITALIC),
+                    FailedToSend => Style::default().fg(Color::LightRed).add_modifier(Modifier::DIM | Modifier::ITALIC),
                 };
 
-                let body_style = match chat_message.status {
-                    ChatMessageStatus::Send => Style::default().fg(Color::Gray),
-                    ChatMessageStatus::Sending => Style::default().fg(Color::Gray).add_modifier(Modifier::DIM | Modifier::ITALIC),
-                    ChatMessageStatus::FailedToSend => Style::default().fg(Color::LightRed).add_modifier(Modifier::DIM | Modifier::ITALIC),
+                let mut body_style = match message.status {
+                    Send => Style::default().fg(Color::Gray),
+                    Sending => Style::default().fg(Color::Gray).add_modifier(Modifier::DIM | Modifier::ITALIC),
+                    FailedToSend => Style::default().fg(Color::LightRed).add_modifier(Modifier::DIM | Modifier::ITALIC),
                 };
 
-                let timestamp_style = match chat_message.status {
-                    ChatMessageStatus::Send => Style::default().fg(Color::DarkGray),
-                    ChatMessageStatus::Sending | ChatMessageStatus::FailedToSend => {
-                        Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC)
-                    }
+                let mut timestamp_style = match message.status {
+                    Send => Style::default().fg(Color::DarkGray),
+                    Sending | ChatMessageStatus::FailedToSend => Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
                 };
 
+                if message_is_focused {
+                    header_style = header_style.bg(Color::DarkGray);
+                    body_style = body_style.bg(Color::DarkGray);
+                    timestamp_style = timestamp_style.bg(Color::DarkGray).fg(Color::Gray);
+                };
+
+                let username = Span::styled(message.author_name.to_string(), header_style);
+                let timestamp = Span::styled(format!(" [{timestamp}]"), timestamp_style);
+                let padding = Span::styled(
+                    pad_to_width("", text_width.saturating_sub(username.width()).saturating_sub(timestamp.width())),
+                    timestamp_style,
+                );
                 let header = Line::from(vec![
-                    Span::styled(format!("{} ", &chat_message.author_name), header_style),
-                    Span::styled(format!(" [{timestamp}] "), timestamp_style),
-                    (match chat_message.status {
-                        ChatMessageStatus::Send => Span::raw(""),
-                        ChatMessageStatus::Sending => Span::styled("sending...", Style::default().add_modifier(Modifier::DIM | Modifier::ITALIC)),
-                        ChatMessageStatus::FailedToSend => Span::styled(
+                    username,
+                    timestamp,
+                    padding,
+                    (match message.status {
+                        Send => Span::raw(""),
+                        Sending => Span::styled("sending...", Style::default().add_modifier(Modifier::DIM | Modifier::ITALIC)),
+                        FailedToSend => Span::styled(
                             "failed to send",
                             Style::default().fg(Color::LightRed).add_modifier(Modifier::DIM | Modifier::ITALIC),
                         ),
                     }),
                 ]);
 
-                let body = Line::from(Span::styled(format!("\t{}", &chat_message.message), body_style));
+                let body = Line::from(Span::styled(pad_to_width(&format!("  {}", &message.message), text_width), body_style));
 
-                vec![header, body].into_iter()
+                if message.reply_id != 0
+                    && let Some(reply_message) = chat_log.iter().find(|m| m.message_id == message.reply_id)
+                {
+                    let mut author_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::DIM);
+                    let mut timestamp_style = Style::default().fg(Color::DarkGray);
+                    let mut message_style = Style::default().fg(Color::Gray).add_modifier(Modifier::DIM);
+                    let mut bar_style = Style::default().fg(Color::Gray).add_modifier(Modifier::DIM);
+
+                    if message_is_focused {
+                        author_style = author_style.bg(Color::DarkGray);
+                        timestamp_style = timestamp_style.bg(Color::DarkGray).fg(Color::Gray).add_modifier(Modifier::DIM);
+                        message_style = message_style.bg(Color::DarkGray);
+                        bar_style = bar_style.bg(Color::DarkGray);
+                    };
+
+                    let author_span = Span::styled(reply_message.author_name.to_string(), author_style);
+                    let timestamp_span = Span::styled(format!(" [{}]", reply_message.timestamp.format("%H:%M:%S")), timestamp_style);
+                    let message_text_width = text_width.saturating_sub(author_span.width()).saturating_sub(timestamp_span.width());
+                    let message_span = Span::styled(format!(" {}", padtruncate(&reply_message.message, message_text_width)), message_style);
+
+                    let reply = Line::from(vec![Span::styled(" ┌── ", bar_style), author_span, timestamp_span, message_span]);
+                    vec![reply, header, body].into_iter()
+                } else {
+                    vec![header, body].into_iter()
+                }
             })
             .collect()
     };
@@ -325,14 +367,28 @@ fn render_chat_history(global_state: &GlobalState, chat_state: &ChatState, frame
         block = block.title_bottom(Span::styled(users_typing, Modifier::ITALIC | Modifier::DIM));
     };
 
-    let widget = Paragraph::new(Text::from(chatlog_lines)).wrap(Wrap { trim: false }).block(block);
+    let widget = Paragraph::new(Text::from(chatlog_lines)).block(block);
     frame.render_widget(widget, area);
 }
 
 fn render_reply_bar(_global_state: &GlobalState, chat_state: &ChatState, frame: &mut Frame, area: Rect) {
     let (borders, border_style, border_corners) = borders_reply_bar(chat_state);
 
-    let lines = vec![Line::from(Span::from("> Replying to penger"))];
+    let (replying_to, timestamp, message) = match &chat_state.replying_to {
+        Some(message) => (
+            &message.author_name,
+            message.timestamp.format("%H:%M:%S").to_string(),
+            message.message.clone(),
+        ),
+        None => (&"unknown".to_owned(), "".to_owned(), "".to_owned()),
+    };
+
+    let lines = vec![Line::from(vec![
+        Span::from("> Replying to "),
+        Span::styled(replying_to.to_string(), Style::default().fg(Color::Yellow)),
+        Span::styled(format!(" [{timestamp}]"), Style::default().add_modifier(Modifier::DIM)),
+        Span::styled(format!(" > {message}"), Style::default().add_modifier(Modifier::DIM)),
+    ])];
 
     let widget = Paragraph::new(Text::from(lines)).block(
         Block::default()
@@ -554,5 +610,20 @@ fn user_status(status: &UserStatus) -> (String, Style) {
         UserStatus::Online => ("●".to_owned(), Style::default().fg(Color::Green)),
         UserStatus::Idle => ("●".to_owned(), Style::default().fg(Color::Yellow)),
         UserStatus::DoNotDisturb => ("●".to_owned(), Style::default().fg(Color::Red)),
+    }
+}
+
+fn pad_to_width(line: &str, width: usize) -> String {
+    let current_len = line.len();
+    let pad_len = width.saturating_sub(current_len);
+    format!("{line}{}", " ".repeat(pad_len))
+}
+
+fn padtruncate(string: &str, max_len: usize) -> String {
+    let string_len = string.chars().count();
+    if string_len < max_len {
+        format!("{string}{}", " ".repeat(max_len.saturating_sub(string_len)))
+    } else {
+        format!("{}...", string.chars().take(max_len).collect::<String>()) // TODO the case where the string is the exact width
     }
 }

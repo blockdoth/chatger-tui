@@ -2,13 +2,14 @@ use chrono::{DateTime, Utc};
 
 use crate::network::protocol::server::Channel;
 use crate::network::protocol::{MediaType, UserStatus};
-use crate::tui::events::ChannelId;
+use crate::tui::events::{ChannelId, MessageId, UserId};
 
 #[derive(Clone, Debug)]
 pub struct DisplayChannel {
     pub id: ChannelId,
     pub name: String,
     pub status: ChannelStatus,
+    pub selection_offset: usize,
 }
 
 impl From<Channel> for DisplayChannel {
@@ -17,16 +18,17 @@ impl From<Channel> for DisplayChannel {
             id: channel.channel_id,
             name: channel.name,
             status: ChannelStatus::Read,
+            selection_offset: 0,
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ChatMessage {
-    pub message_id: u64,
+    pub message_id: MessageId,
+    pub reply_id: MessageId,
     pub author_name: String,
-    pub author_id: u64,
-    pub reply_id: u64,
+    pub author_id: UserId,
     pub timestamp: DateTime<Utc>,
     pub message: String,
     pub status: ChatMessageStatus,
@@ -34,7 +36,7 @@ pub struct ChatMessage {
 
 #[derive(Debug, Clone)]
 pub struct User {
-    pub id: u64,
+    pub id: UserId,
     pub name: String,
     pub status: UserStatus,
 }

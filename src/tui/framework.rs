@@ -181,7 +181,12 @@ where
     fn setup_terminal() -> Result<Terminal<CrosstermBackend<io::Stdout>>> {
         enable_raw_mode()?;
         let mut stdout = stdout();
-        execute!(stdout, EnterAlternateScreen, EnableMouseCapture, EnableFocusChange)?;
+        execute!(
+            stdout,
+            EnterAlternateScreen,
+            // EnableMouseCapture,
+            EnableFocusChange
+        )?;
         let backend = CrosstermBackend::new(stdout);
         Terminal::new(backend).map_err(Into::into)
     }
@@ -189,7 +194,12 @@ where
     /// Restores the terminal to its original state after exiting the application.
     fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<()> {
         disable_raw_mode()?;
-        execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture, DisableFocusChange)?;
+        execute!(
+            terminal.backend_mut(),
+            LeaveAlternateScreen,
+            // DisableMouseCapture,
+            DisableFocusChange
+        )?;
         terminal.show_cursor()?;
         Ok(())
     }

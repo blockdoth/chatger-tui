@@ -30,6 +30,7 @@ pub struct UserProfile {
 pub enum ChatFocus {
     Channels,
     ChatHistory,
+    ChatHistorySelection,
     ChatInput(usize),
     Users,
     Logs,
@@ -53,6 +54,8 @@ pub struct ChatState {
     pub is_typing: bool,
     pub time_since_last_typing: Instant,
     pub time_since_last_focused: Option<Instant>,
+    pub message_selection: usize,
+    pub replying_to: Option<UserId>,
 }
 
 pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, client: &mut Client) -> Result<()> {
@@ -435,6 +438,15 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, client: &mut Cl
         IdleUser => {
             chat_state.current_user.status = UserStatus::Idle;
             client.send_user_status(UserStatus::Idle).await?;
+        }
+        Reply => {
+            if chat_state.replying_to.is_none() {
+                info!("Reply on");
+                chat_state.replying_to = Some(0);
+            } else {
+                info!("Reply off");
+                chat_state.replying_to = None;
+            };
         }
         _ => {}
     }

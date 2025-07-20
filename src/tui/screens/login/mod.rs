@@ -177,6 +177,8 @@ pub async fn handle_login_event(tui: &mut State, event: TuiEvent, client: &mut C
                             password: login_state.password_input.clone(),
                         },
                         chat_scroll_offset: 0,
+                        message_selection: 0,
+                        replying_to: None,
                         server_connection_status: ServerConnectionStatus::Connected,
                         server_address,
                         waiting_message_acks_id: VecDeque::new(),

@@ -11,7 +11,7 @@ use crate::network::protocol::UserStatus;
 use crate::tui::chat::{ChannelStatus, ChatMessageStatus, User};
 use crate::tui::screens::GlobalState;
 use crate::tui::screens::chat::borders::{
-    borders_channel, borders_chat_history, borders_input, borders_logs, borders_profile, borders_server_status, borders_users,
+    borders_channel, borders_chat_history, borders_input, borders_logs, borders_profile, borders_reply_bar, borders_server_status, borders_users,
 };
 use crate::tui::screens::chat::{ChatFocus, ChatState};
 
@@ -31,7 +31,7 @@ pub fn draw_main(global_state: &GlobalState, chat_state: &ChatState, frame: &mut
     let (channels_area, chat_area, users_area) = split_channel_chat_user_areas(global_state, chat_state, app_area);
     let (users_area, server_status_area) = split_users_server_areas(global_state, chat_state, users_area);
     let (channels_area, profile_area) = split_channels_profile_areas(global_state, chat_state, channels_area);
-    let (chat_history_area, chat_input_area) = split_chatlog_chatinput_areas(global_state, chat_state, chat_area);
+    let (chat_history_area, reply_bar_area, chat_input_area) = split_chatlog_replybar_chatinput_areas(global_state, chat_state, chat_area);
 
     let chat_history_area = if global_state.show_logs {
         let (chat_history_area, logs_area) = split_chat_log_areas(global_state, chat_state, chat_history_area);
@@ -44,6 +44,7 @@ pub fn draw_main(global_state: &GlobalState, chat_state: &ChatState, frame: &mut
     render_channels(global_state, chat_state, frame, channels_area);
     render_profile(global_state, chat_state, frame, profile_area);
     render_chat_history(global_state, chat_state, frame, chat_history_area);
+    render_reply_bar(global_state, chat_state, frame, reply_bar_area);
     render_chat_input(global_state, chat_state, frame, chat_input_area);
     render_users(global_state, chat_state, frame, users_area);
     render_server_status(global_state, chat_state, frame, server_status_area);
@@ -93,15 +94,29 @@ fn split_users_server_areas(_global_state: &GlobalState, _chat_state: &ChatState
     (chunks[0], chunks[1])
 }
 
-fn split_chatlog_chatinput_areas(_global_state: &GlobalState, chat_state: &ChatState, area: Rect) -> (Rect, Rect) {
-    let input_height = if let ChatFocus::ChatInput(_) = chat_state.focus { 5 } else { 4 };
+fn split_chatlog_replybar_chatinput_areas(_global_state: &GlobalState, chat_state: &ChatState, area: Rect) -> (Rect, Rect, Rect) {
+    let input_height =
+        if chat_state.focus == ChatFocus::ChatHistory || chat_state.focus == ChatFocus::Logs || chat_state.focus == ChatFocus::ChatHistorySelection {
+            4 // Different because of border shenenigans
+        } else {
+            5
+        };
+    let (history_height, reply_height) = if chat_state.replying_to.is_some() {
+        (area.height - input_height - 2, 2)
+    } else {
+        (area.height - input_height, 0)
+    };
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(0)
-        .constraints([Constraint::Fill(10), Constraint::Length(input_height)])
+        .constraints([
+            Constraint::Length(history_height),
+            Constraint::Length(reply_height),
+            Constraint::Length(input_height),
+        ])
         .split(area);
-    (chunks[0], chunks[1])
+    (chunks[0], chunks[1], chunks[2])
 }
 
 // Done manually because of issues with border highlights creating small shifts
@@ -109,7 +124,7 @@ fn split_chat_log_areas(_global_state: &GlobalState, chat_state: &ChatState, are
     let left_width = area.width / 2 + (area.width % 2);
     let right_width = area.width - left_width;
 
-    let offset = if let ChatFocus::ChatHistory | ChatFocus::ChatInput(_) = chat_state.focus {
+    let offset = if let ChatFocus::ChatHistory | ChatFocus::ChatHistorySelection | ChatFocus::ChatInput(_) = chat_state.focus {
         1
     } else {
         0
@@ -314,6 +329,21 @@ fn render_chat_history(global_state: &GlobalState, chat_state: &ChatState, frame
     frame.render_widget(widget, area);
 }
 
+fn render_reply_bar(_global_state: &GlobalState, chat_state: &ChatState, frame: &mut Frame, area: Rect) {
+    let (borders, border_style, border_corners) = borders_reply_bar(chat_state);
+
+    let lines = vec![Line::from(Span::from("> Replying to penger"))];
+
+    let widget = Paragraph::new(Text::from(lines)).block(
+        Block::default()
+            .padding(PADDING)
+            .border_set(border_corners)
+            .borders(borders)
+            .border_style(border_style),
+    );
+    frame.render_widget(widget, area);
+}
+
 fn render_chat_input(_global_state: &GlobalState, chat_state: &ChatState, frame: &mut Frame, area: Rect) {
     let (channel_id, channel_name) = match chat_state.channels.get(chat_state.active_channel_idx) {
         Some(channel) => (channel.id, channel.name.clone()),
@@ -446,8 +476,11 @@ fn render_users(_global_state: &GlobalState, chat_state: &ChatState, frame: &mut
 fn render_info(global_state: &GlobalState, chat_state: &ChatState, frame: &mut Frame, area: Rect) {
     let info_text = match chat_state.focus {
         ChatFocus::Channels => "[↑↓] Change Channel | [Enter | →] Chat log | [L]ogs | [Q]uit",
-        ChatFocus::ChatHistory if global_state.show_logs => "[↓] Input | [←] Channels | [→] Logs | [L]ogs | [Q]uit",
-        ChatFocus::ChatHistory => "[Enter | Space ] Input | [←] Channels | [→] Users | [L]ogs | [Q]uit",
+        ChatFocus::ChatHistory if global_state.show_logs => "[Enter | Space ] Input Input | [S]elect |[←] Channels | [→] Logs | [L]ogs | [Q]uit",
+        ChatFocus::ChatHistory => "[Enter | Space ] Input | [S]elect | [←] Channels | [→] Users | [L]ogs | [Q]uit",
+        ChatFocus::ChatHistorySelection => {
+            "[Enter | Space ] Input | [↑↓] Move Selection | [R]eply | [S]elect | [←] Channels | [→] Users | [L]ogs | [Q]uit"
+        }
         ChatFocus::ChatInput(_) => {
             "[Enter] Send Message | [Backspace] Delete | [←→] Move Cursor | [Ctrl + ←→] Tab move Cursor | [↑] Chatlog | [L]ogs | [Q]uit"
         }

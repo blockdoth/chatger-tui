@@ -120,9 +120,9 @@ pub fn borders_chat_history(global_state: &GlobalState, chat_state: &ChatState) 
                 bottom_right: line::NORMAL.horizontal_up,
                 top_right: line::NORMAL.horizontal_down,
                 top_left: if chat_state.replying_to.is_some() {
-                  line::NORMAL.cross
-                }else {
-                  line::NORMAL.horizontal_down
+                    line::NORMAL.cross
+                } else {
+                    line::NORMAL.horizontal_down
                 },
                 ..border::PLAIN
             },

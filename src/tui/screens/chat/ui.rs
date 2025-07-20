@@ -62,7 +62,7 @@ pub fn split_app_info_areas(_global_state: &GlobalState, area: Rect) -> (Rect, R
 
 fn split_channel_chat_user_areas(_global_state: &GlobalState, chat_state: &ChatState, area: Rect) -> (Rect, Rect, Rect) {
     let channel_width_offset = if chat_state.focus == ChatFocus::Channels { 0 } else { 1 };
-    let users_width_offset = if matches!(chat_state.focus , ChatFocus::Users(_)) { 1 } else { 0 };
+    let users_width_offset = if matches!(chat_state.focus, ChatFocus::Users(_)) { 1 } else { 0 };
 
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
@@ -482,16 +482,17 @@ fn render_users(_global_state: &GlobalState, chat_state: &ChatState, frame: &mut
             UserStatus::DoNotDisturb => ("●", Style::default().fg(Color::Red)),
         };
 
-
         let mut name_style = if let UserStatus::Offline = user.status {
             Style::default().fg(Color::Gray).add_modifier(Modifier::DIM)
         } else {
             Style::default()
         };
 
-        if let Some(idx) = selected_index && idx == index  {
-          symbol_style = symbol_style.bg(Color::DarkGray);
-          name_style = name_style.bg(Color::DarkGray);
+        if let Some(idx) = selected_index
+            && idx == index
+        {
+            symbol_style = symbol_style.bg(Color::DarkGray);
+            name_style = name_style.bg(Color::DarkGray);
         }
 
         Line::from(vec![
@@ -500,11 +501,7 @@ fn render_users(_global_state: &GlobalState, chat_state: &ChatState, frame: &mut
         ])
     };
 
-    let selected_index = if let ChatFocus::Users(i) = chat_state.focus {
-        Some(i)
-    }else{
-      None
-    };
+    let selected_index = if let ChatFocus::Users(i) = chat_state.focus { Some(i) } else { None };
 
     let mut lines = vec![];
 
@@ -513,8 +510,8 @@ fn render_users(_global_state: &GlobalState, chat_state: &ChatState, frame: &mut
             "Online",
             Style::default().fg(Color::Green).add_modifier(Modifier::UNDERLINED),
         )));
-        for (i,user) in online_users.iter().enumerate() {
-            lines.push(format_user_line(user, i,selected_index ));
+        for (i, user) in online_users.iter().enumerate() {
+            lines.push(format_user_line(user, i, selected_index));
         }
         lines.push(Line::from(""));
     }
@@ -526,7 +523,7 @@ fn render_users(_global_state: &GlobalState, chat_state: &ChatState, frame: &mut
             "Offline",
             Style::default().fg(Color::Gray).add_modifier(Modifier::UNDERLINED),
         )));
-        for (i,user) in offline_users.iter().enumerate() {
+        for (i, user) in offline_users.iter().enumerate() {
             lines.push(format_user_line(user, online_users_count + i, selected_index));
         }
     }

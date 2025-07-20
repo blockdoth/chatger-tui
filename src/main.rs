@@ -12,7 +12,7 @@ async fn main() -> Result<()> {
 
     // TODO merge cli args and app config
     let config = AppConfig {
-        address: args.address.parse()?,
+        address: args.address,
         username: args.username,
         password: args.password,
         loglevel: args.loglevel,

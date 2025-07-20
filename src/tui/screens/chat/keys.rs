@@ -61,7 +61,7 @@ pub fn handle_chat_key_event(event: Event, focus: ChatFocus, global_state: &Glob
                 Left if global_state.show_logs => Some(TuiEvent::ChatFocusChange(ChatFocus::Logs)),
                 Left => Some(TuiEvent::ChatFocusChange(ChatFocus::ChatHistory)),
                 Up => Some(TuiEvent::ScrollUp),
-                Down => Some(TuiEvent::ScrollDown),                
+                Down => Some(TuiEvent::ScrollDown),
                 Char('v') | Char('V') => Some(TuiEvent::ViewUsers),
                 Char('q') | Char('Q') => Some(TuiEvent::Exit),
                 Char('l') | Char('L') => Some(TuiEvent::ToggleLogs),

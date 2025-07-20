@@ -5,8 +5,9 @@ use std::collections::{HashMap, VecDeque};
 use std::io::{self, ErrorKind};
 use std::net::SocketAddr;
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use log::{debug, error, info};
+use tokio::net::lookup_host;
 use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
 
@@ -121,31 +122,50 @@ pub async fn handle_login_event(tui: &mut State, event: TuiEvent, client: &mut C
             _ => {}
         },
         Login => {
-            if let Ok(server_address) = login_state.server_address_input.trim().parse::<SocketAddr>() {
-                match client.connect(server_address).await {
-                    Ok(_) => {
-                        client
-                            .login(login_state.username_input.clone(), login_state.password_input.clone())
-                            .await?;
-                        login_state.server_address = Some(server_address);
-                        client.send_user_status(UserStatus::Online).await?;
+            let server_address_raw = login_state.server_address_input.trim();
+
+            let server_address = match server_address_raw.parse::<SocketAddr>() {
+                Ok(addr) => addr,
+                Err(e) => {
+                    debug!("Looking up {server_address_raw} using DNS");
+                    let mut possible_server_addrs: Vec<SocketAddr> = match lookup_host(format!("{server_address_raw}:4348")).await {
+                        Ok(addr_list) => addr_list,
+                        Err(e) => {
+                            login_state.input_status = InputStatus::AddressNotParsable;
+                            return Err(anyhow!("Could not parse address {server_address_raw}"));
+                        }
                     }
-                    Err(e) => {
-                        if let Some(err) = e.downcast_ref::<io::Error>() {
-                            match err.kind() {
-                                ErrorKind::InvalidInput => login_state.input_status = InputStatus::ServerNotFound,
-                                ErrorKind::ConnectionRefused => login_state.input_status = InputStatus::ServerNotFound,
-                                e => {
-                                    error!("Unhandled connection exception {e}");
-                                    login_state.input_status = InputStatus::UnknownError
-                                }
+                    .collect();
+                    if possible_server_addrs.is_empty() {
+                        login_state.input_status = InputStatus::ServerNotFound;
+                        return Err(anyhow!("Could not resolve address: {server_address_raw}"));
+                    }
+                    possible_server_addrs.remove(0)
+                }
+            };
+
+            match client.connect(server_address).await {
+                Ok(_) => {
+                    client
+                        .login(login_state.username_input.clone(), login_state.password_input.clone())
+                        .await?;
+                    login_state.server_address = Some(server_address);
+                    client.send_user_status(UserStatus::Online).await?;
+                }
+                Err(e) => {
+                    if let Some(err) = e.downcast_ref::<io::Error>() {
+                        error!("{err:?}");
+                        match err.kind() {
+                            ErrorKind::InvalidInput => login_state.input_status = InputStatus::ServerNotFound,
+                            ErrorKind::ConnectionRefused => login_state.input_status = InputStatus::ServerNotFound,
+                            e => {
+                                error!("Unhandled connection exception {e}");
+                                login_state.input_status = InputStatus::UnknownError
                             }
                         }
                     }
                 }
-            } else {
-                login_state.input_status = InputStatus::AddressNotParsable
-            };
+            }
         }
         LoginSuccess(user_id) => {
             if let Some(server_address) = login_state.server_address {

@@ -29,7 +29,7 @@ pub struct CliArgs {
 }
 
 pub struct AppConfig {
-    pub address: SocketAddr,
+    pub address: String,
     pub username: String,
     pub password: String,
     pub auto_login: bool,

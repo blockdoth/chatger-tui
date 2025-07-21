@@ -19,7 +19,7 @@ pub async fn handle_message(payload: ServerPayload, event_send: Sender<TuiEvent>
                 event_send.send(TuiEvent::HealthCheckRecv).await?;
                 Ok(())
             }
-            HealthKind::Pong => panic!("todo"),
+            HealthKind::Pong => Err(anyhow!("Received Pong packet, which are meant for the server only")),
         },
         Login(packet) => match packet.status {
             Success => {
@@ -27,57 +27,84 @@ pub async fn handle_message(payload: ServerPayload, event_send: Sender<TuiEvent>
                 event_send.send(TuiEvent::LoginSuccess(0)).await?; // TODO user id handling
                 Ok(())
             }
-            Failed => match packet.error_message {
-                Some(message) => {
+            Failed => {
+                if let Some(message) = packet.error_message {
                     event_send.send(TuiEvent::LoginFail(message.clone())).await?; // TODO distinction between username and password fail
-                    error!("failed to log in {message}");
-                    Err(anyhow!("failed to log in {}", message))
+                    Err(anyhow!("Failed to login: {message}"))
+                } else {
+                    Err(anyhow!("Failed to login"))
                 }
-                None => {
-                    error!("failed to log in");
-                    Err(anyhow!("failed to log in"))
-                }
-            },
-            Notification => panic!("todo"),
+            }
+            Notification => Err(anyhow!("Malformed packet, notification bit should not be set")),
         },
         Channels(packet) => match packet.status {
             Success => {
                 event_send.send(TuiEvent::Channels(packet.channels)).await?;
                 Ok(())
             }
-            Failed => todo!(),
-            Notification => panic!("todo"),
+            Failed => {
+                if let Some(message) = packet.error_message {
+                    Err(anyhow!("Failed to retrieve channels: {message}"))
+                } else {
+                    Err(anyhow!("Failed to retrieve channels"))
+                }
+            }
+            Notification => Err(anyhow!("Malformed packet, notification bit should not be set")),
         },
         ChannelsList(packet) => match packet.status {
             Success => {
                 event_send.send(TuiEvent::ChannelIDs(packet.channel_ids)).await?;
                 Ok(())
             }
-            Failed => todo!(),
-            Notification => panic!("todo"),
+            Failed => {
+                if let Some(message) = packet.error_message {
+                    Err(anyhow!("Failed to retrieve channels list: {message}"))
+                } else {
+                    Err(anyhow!("Failed to retrieve channels list"))
+                }
+            }
+            Notification => Err(anyhow!("Malformed packet, notification bit should not be set")),
         },
         UserStatuses(packet) => match packet.status {
             Success => {
                 event_send.send(TuiEvent::UserStatusesUpdate(packet.users)).await?;
                 Ok(())
             }
-            Failed => todo!(),
-            Notification => panic!("todo"),
+            Failed => {
+                if let Some(message) = packet.error_message {
+                    Err(anyhow!("Failed to retrieve user statuses: {message}"))
+                } else {
+                    Err(anyhow!("Failed to retrieve user statuses"))
+                }
+            }
+            Notification => Err(anyhow!("Malformed packet, notification bit should not be set")),
         },
         Users(packet) => match packet.status {
             Success => {
                 event_send.send(TuiEvent::Users(packet.users)).await?;
                 Ok(())
             }
-            Failed => todo!(),
-            Notification => panic!("todo"),
+            Failed => {
+                if let Some(message) = packet.error_message {
+                    Err(anyhow!("Failed to retrieve users: {message}"))
+                } else {
+                    Err(anyhow!("Failed to retrieve users"))
+                }
+            }
+            Notification => Err(anyhow!("Malformed packet, notification bit should not be set")),
         },
         History(packet) => match packet.status {
             Success | Notification => {
                 event_send.send(TuiEvent::HistoryUpdate(packet.messages)).await?;
                 Ok(())
             }
-            Failed => todo!(),
+            Failed => {
+                if let Some(message) = packet.error_message {
+                    Err(anyhow!("Failed to retrieve history: {message}"))
+                } else {
+                    Err(anyhow!("Failed to retrieve history"))
+                }
+            }
         },
         SendMessageAck(packet) => match packet.status {
             Success => {
@@ -85,13 +112,13 @@ pub async fn handle_message(payload: ServerPayload, event_send: Sender<TuiEvent>
                 Ok(())
             }
             Failed => {
-                error!("Failed to send message {:?}", packet.error_message);
-                Ok(())
+                if let Some(message) = packet.error_message {
+                    Err(anyhow!("Failed to send message: {message}"))
+                } else {
+                    Err(anyhow!("Failed to send message-but"))
+                }
             }
-            Notification => {
-                info!("Got message notification from server TODO handle");
-                Ok(())
-            }
+            Notification => Err(anyhow!("Malformed packet, notification bit should not be set")),
         },
         SendMediaAck(packet) => match packet.status {
             Success => {
@@ -99,13 +126,13 @@ pub async fn handle_message(payload: ServerPayload, event_send: Sender<TuiEvent>
                 Ok(())
             }
             Failed => {
-                error!("Failed to send media {:?}", packet.error_message);
-                Ok(())
+                if let Some(message) = packet.error_message {
+                    Err(anyhow!("Failed to send media: {message}"))
+                } else {
+                    Err(anyhow!("Failed to send media"))
+                }
             }
-            Notification => {
-                info!("Got message notification from server TODO handle");
-                Ok(())
-            }
+            Notification => Err(anyhow!("Malformed packet, notification bit should not be set")),
         },
         Media(packet) => match packet.status {
             Success => {
@@ -119,13 +146,13 @@ pub async fn handle_message(payload: ServerPayload, event_send: Sender<TuiEvent>
                 Ok(())
             }
             Failed => {
-                error!("Failed to send media {:?}", packet.error_message);
-                Ok(())
+                if let Some(message) = packet.error_message {
+                    Err(anyhow!("Failed to retrieve media: {message}"))
+                } else {
+                    Err(anyhow!("Failed to retrieve media"))
+                }
             }
-            Notification => {
-                info!("Got message notification from server TODO handle");
-                Ok(())
-            }
+            Notification => Err(anyhow!("Malformed packet, notification bit should not be set")),
         },
         Typing(packet) => {
             event_send

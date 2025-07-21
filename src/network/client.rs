@@ -1,5 +1,6 @@
 use std::hash::{Hash, Hasher};
 use std::net::{IpAddr, SocketAddr, SocketAddrV4};
+use std::ops::DerefMut;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -69,7 +70,7 @@ impl Hash for ServerAddrInfo {
     }
 }
 pub struct Client {
-    write_stream: Option<Arc<Mutex<Box<dyn AsyncWrite + Send + Unpin>>>>,
+    write_stream: Option<Box<dyn AsyncWrite + Send + Unpin>>,
     event_send: Sender<TuiEvent>,
     recv_handle: Option<JoinHandle<()>>,
     pub time_since_last_transmit: InteractedTimeStamp,
@@ -89,8 +90,8 @@ impl Client {
         }
     }
 
-    pub async fn get_stream(&'_ mut self) -> Result<MutexGuard<'_, Box<dyn AsyncWrite + Send + Unpin>>> {
-        Ok(self.write_stream.as_mut().ok_or_else(|| anyhow!("Not connected to server"))?.lock().await)
+    pub fn get_stream(&mut self) -> Result<&mut (dyn AsyncWrite + Send + Unpin)> {
+        Ok(self.write_stream.as_mut().ok_or_else(|| anyhow!("Not connected to server"))?)
     }
 
     pub async fn connect(&mut self, server_connection: &ServerAddrInfo) -> Result<()> {
@@ -115,7 +116,7 @@ impl Client {
                 let (read_stream, write_stream) = connection_tcp.into_split();
 
                 info!("Connected to {target_addr} from {src_addr}");
-                self.write_stream = Some(Arc::new(Mutex::new(Box::new(write_stream))));
+                self.write_stream = Some(Box::new(write_stream));
                 self.recv_handle = Some(self.receiving_task(Box::new(read_stream)).await);
                 self.connection_status = ServerConnectionStatus::Connected;
             }
@@ -134,7 +135,7 @@ impl Client {
                     let (read_stream, write_stream) = tokio::io::split(connection_tls);
 
                     info!("Connected to {target_addr} from {src_addr} over TLS");
-                    self.write_stream = Some(Arc::new(Mutex::new(Box::new(write_stream))));
+                    self.write_stream = Some(Box::new(write_stream));
                     self.recv_handle = Some(self.receiving_task(Box::new(read_stream)).await);
                     self.connection_status = ServerConnectionStatus::Connected;
                 } else {
@@ -167,10 +168,10 @@ impl Client {
 
     pub async fn send_healthcheck(&mut self) -> Result<()> {
         let interacted_ts = self.time_since_last_transmit.clone();
-        let mut write_stream = self.get_stream().await?;
+        let mut write_stream = self.get_stream()?;
 
         Self::send_message(
-            &mut write_stream,
+            write_stream,
             interacted_ts,
             ClientPacketType::Healthcheck,
             ClientPayload::Health(HealthCheckPacket { kind: HealthKind::Pong }),
@@ -180,10 +181,10 @@ impl Client {
 
     pub async fn login(&mut self, username: String, password: String) -> Result<()> {
         let interacted_ts = self.time_since_last_transmit.clone();
-        let mut write_stream = self.get_stream().await?;
+        let mut write_stream = self.get_stream()?;
 
         Self::send_message(
-            &mut write_stream,
+            &mut write_stream.deref_mut(),
             interacted_ts,
             ClientPacketType::Login,
             ClientPayload::Login(LoginPacket { username, password }),
@@ -193,10 +194,10 @@ impl Client {
 
     pub async fn request_channels(&mut self, channel_ids: Vec<u64>) -> Result<()> {
         let interacted_ts = self.time_since_last_transmit.clone();
-        let mut write_stream = self.get_stream().await?;
+        let mut write_stream = self.get_stream()?;
 
         Self::send_message(
-            &mut write_stream,
+            write_stream,
             interacted_ts,
             ClientPacketType::Channels,
             ClientPayload::Channels(GetChannelsPacket { channel_ids }),
@@ -206,36 +207,24 @@ impl Client {
 
     pub async fn request_channel_ids(&mut self) -> Result<()> {
         let interacted_ts = self.time_since_last_transmit.clone();
-        let mut write_stream = self.get_stream().await?;
+        let mut write_stream = self.get_stream()?;
 
-        Self::send_message(
-            &mut write_stream,
-            interacted_ts,
-            ClientPacketType::ChannelsList,
-            ClientPayload::ChannelsList,
-        )
-        .await
+        Self::send_message(write_stream, interacted_ts, ClientPacketType::ChannelsList, ClientPayload::ChannelsList).await
     }
 
     pub async fn request_user_statuses(&mut self) -> Result<()> {
         let interacted_ts = self.time_since_last_transmit.clone();
-        let mut write_stream = self.get_stream().await?;
+        let mut write_stream = self.get_stream()?;
 
-        Self::send_message(
-            &mut write_stream,
-            interacted_ts,
-            ClientPacketType::UserStatuses,
-            ClientPayload::UserStatuses,
-        )
-        .await
+        Self::send_message(write_stream, interacted_ts, ClientPacketType::UserStatuses, ClientPayload::UserStatuses).await
     }
 
     pub async fn request_users(&mut self, user_ids: Vec<u64>) -> Result<()> {
         let interacted_ts = self.time_since_last_transmit.clone();
-        let mut write_stream = self.get_stream().await?;
+        let mut write_stream = self.get_stream()?;
 
         Self::send_message(
-            &mut write_stream,
+            write_stream,
             interacted_ts,
             ClientPacketType::Users,
             ClientPayload::Users(GetUsersPacket { user_ids }),
@@ -245,10 +234,10 @@ impl Client {
 
     pub async fn request_history_by_timestamp(&mut self, channel_id: u64, timestamp: DateTime<Utc>, num_messages_back: i8) -> Result<()> {
         let interacted_ts = self.time_since_last_transmit.clone();
-        let mut write_stream = self.get_stream().await?;
+        let mut write_stream = self.get_stream()?;
 
         Self::send_message(
-            &mut write_stream,
+            write_stream,
             interacted_ts,
             ClientPacketType::History,
             ClientPayload::History(GetHistoryPacket {
@@ -262,9 +251,10 @@ impl Client {
 
     pub async fn send_chat_message(&mut self, channel_id: u64, reply_id: u64, message_text: String, media_ids: Vec<u64>) -> Result<()> {
         let interacted_ts = self.time_since_last_transmit.clone();
-        let mut write_stream = self.get_stream().await?;
+        let mut write_stream = self.get_stream()?;
+
         Self::send_message(
-            &mut write_stream,
+            write_stream,
             interacted_ts,
             ClientPacketType::SendMessage,
             ClientPayload::SendMessage(SendMessagePacket {
@@ -279,10 +269,10 @@ impl Client {
 
     pub async fn send_typing(&mut self, channel_id: u64, is_typing: bool) -> Result<()> {
         let interacted_ts = self.time_since_last_transmit.clone();
-        let mut write_stream = self.get_stream().await?;
+        let mut write_stream = self.get_stream()?;
 
         Self::send_message(
-            &mut write_stream,
+            write_stream,
             interacted_ts,
             ClientPacketType::Typing,
             ClientPayload::Typing(TypingPacket { is_typing, channel_id }),
@@ -292,10 +282,10 @@ impl Client {
 
     pub async fn send_user_status(&mut self, status: UserStatus) -> Result<()> {
         let interacted_ts = self.time_since_last_transmit.clone();
-        let mut write_stream = self.get_stream().await?;
+        let mut write_stream = self.get_stream()?;
 
         Self::send_message(
-            &mut write_stream,
+            write_stream,
             interacted_ts,
             ClientPacketType::Status,
             ClientPayload::Status(StatusPacket { status }),
@@ -305,18 +295,12 @@ impl Client {
 
     async fn receiving_task(&mut self, mut read_stream: Box<dyn AsyncRead + Send + Unpin>) -> JoinHandle<()> {
         info!("Started receiving task");
-        let write_stream = self.write_stream.clone();
         let event_send = self.event_send.clone();
         let interacted_timestamp = self.time_since_last_transmit.clone();
+
         tokio::spawn(async move {
             let mut header_buffer: [u8; 10] = [0; 10];
             let mut payload_buffer: [u8; MAX_MESSAGE_LENGTH] = [0; MAX_MESSAGE_LENGTH];
-            let stream = if let Some(stream) = write_stream {
-                stream
-            } else {
-                error!("No write stream available");
-                return;
-            };
             loop {
                 match Self::read_message(&mut read_stream, interacted_timestamp.clone(), &mut header_buffer, &mut payload_buffer).await {
                     Ok((payload, _bytes_read)) => {
@@ -341,7 +325,7 @@ impl Client {
 // Actual sending and receiving functions
 impl Client {
     pub async fn send_message(
-        stream: &mut Box<dyn AsyncWrite + Send + Unpin>,
+        stream: &mut (dyn AsyncWrite + Send + Unpin),
         transmission_timestamp: InteractedTimeStamp,
         packet_type: ClientPacketType,
         payload: ClientPayload,
@@ -366,7 +350,7 @@ impl Client {
     }
 
     pub async fn read_message(
-        stream: &mut Box<dyn AsyncRead + Send + Unpin>,
+        stream: &mut (dyn AsyncRead + Send + Unpin),
         transmission_timestamp: InteractedTimeStamp,
         header_buffer: &mut [u8],
         payload_buffer: &mut [u8],

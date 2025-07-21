@@ -11,7 +11,8 @@ use tokio::net::lookup_host;
 use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
 
-use crate::network::client::{Client, ServerConnectionStatus};
+use crate::cli::{DEFAULT_ADDRESS, DEFAULT_PORT};
+use crate::network::client::{Client, ConnectionType, ServerAddrInfo, ServerConnectionStatus};
 use crate::network::protocol::UserStatus;
 use crate::tui::events::TuiEvent;
 use crate::tui::screens::Screen;
@@ -44,9 +45,10 @@ pub struct LoginState {
     pub username_input: String,
     pub password_input: String,
     pub server_address_input: String,
-    pub server_address: Option<SocketAddr>,
+    pub server_address: Option<ServerAddrInfo>,
     pub focus: LoginFocus,
     pub input_status: InputStatus,
+    pub enable_tls: bool,
 }
 
 pub async fn handle_login_event(tui: &mut State, event: TuiEvent, client: &mut Client) -> Result<()> {
@@ -125,10 +127,32 @@ pub async fn handle_login_event(tui: &mut State, event: TuiEvent, client: &mut C
             let server_address_raw = login_state.server_address_input.trim();
 
             let server_address = match server_address_raw.parse::<SocketAddr>() {
-                Ok(addr) => addr,
+                Ok(addr) => {
+                    if login_state.enable_tls {
+                        return Err(anyhow!("Unable to make TLS connection without a domain"));
+                    }
+                    ServerAddrInfo {
+                        ip: addr.ip(),
+                        port: addr.port(),
+                        domain: None,
+                        connection_type: ConnectionType::Raw,
+                    }
+                }
                 Err(e) => {
                     debug!("Looking up {server_address_raw} using DNS");
-                    let mut possible_server_addrs: Vec<SocketAddr> = match lookup_host(format!("{server_address_raw}:4348")).await {
+                    let mut chunks = server_address_raw.split(':');
+                    let domain = if let Some(domain) = chunks.next() {
+                        domain
+                    } else {
+                        return Err(anyhow!("Unable to parse address {server_address_raw}"));
+                    };
+                    let port: &str = if let Some(port) = chunks.next() {
+                        port
+                    } else {
+                        &DEFAULT_PORT.to_string()
+                    };
+
+                    let mut possible_server_addrs: Vec<SocketAddr> = match lookup_host(format!("{domain}:{port}")).await {
                         Ok(addr_list) => addr_list,
                         Err(e) => {
                             login_state.input_status = InputStatus::AddressNotParsable;
@@ -136,20 +160,33 @@ pub async fn handle_login_event(tui: &mut State, event: TuiEvent, client: &mut C
                         }
                     }
                     .collect();
+
                     if possible_server_addrs.is_empty() {
                         login_state.input_status = InputStatus::ServerNotFound;
                         return Err(anyhow!("Could not resolve address: {server_address_raw}"));
                     }
-                    possible_server_addrs.remove(0)
+
+                    let addr = possible_server_addrs.remove(0);
+
+                    ServerAddrInfo {
+                        ip: addr.ip(),
+                        port: addr.port(),
+                        domain: Some(domain.to_owned()),
+                        connection_type: if login_state.enable_tls {
+                            ConnectionType::TLS
+                        } else {
+                            ConnectionType::Raw
+                        },
+                    }
                 }
             };
 
-            match client.connect(server_address).await {
+            match client.connect(&server_address).await {
                 Ok(_) => {
                     client
                         .login(login_state.username_input.clone(), login_state.password_input.clone())
                         .await?;
-                    login_state.server_address = Some(server_address);
+                    login_state.server_address = Some(server_address.clone());
                     client.send_user_status(UserStatus::Online).await?;
                 }
                 Err(e) => {
@@ -168,7 +205,7 @@ pub async fn handle_login_event(tui: &mut State, event: TuiEvent, client: &mut C
             }
         }
         LoginSuccess(user_id) => {
-            if let Some(server_address) = login_state.server_address {
+            if let Some(server_address) = &login_state.server_address {
                 // Save login state
                 login_state.input_status = InputStatus::AllFine;
                 tui.state_map.insert(Screen::Login, AppState::Login(login_state.clone()));
@@ -176,8 +213,15 @@ pub async fn handle_login_event(tui: &mut State, event: TuiEvent, client: &mut C
                 let username = login_state.username_input.clone();
                 let password = login_state.password_input.clone();
 
-                debug!("{:?} {} {} {}", tui.state_map.keys(), username, password, server_address);
-                if let Some(chat_state) = tui.state_map.get(&Screen::Chat(username, password, server_address.to_string())) {
+                debug!(
+                    "{:?} {} {} {}:{}",
+                    tui.state_map.keys(),
+                    username,
+                    password,
+                    server_address.ip,
+                    server_address.port
+                );
+                if let Some(chat_state) = tui.state_map.get(&Screen::Chat(username, password, server_address.clone())) {
                     tui.current_state = chat_state.clone();
                     info!("Restored a saved session");
                 } else {
@@ -199,7 +243,7 @@ pub async fn handle_login_event(tui: &mut State, event: TuiEvent, client: &mut C
                         chat_scroll_offset: 0,
                         replying_to: None,
                         server_connection_status: ServerConnectionStatus::Connected,
-                        server_address,
+                        server_address: server_address.clone(),
                         waiting_message_acks_id: VecDeque::new(),
                         incrementing_ack_id: 100000, // TODO better value
                         users_typing: HashMap::new(),

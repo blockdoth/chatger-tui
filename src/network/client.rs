@@ -1,4 +1,5 @@
-use std::net::SocketAddr;
+use std::hash::{Hash, Hasher};
+use std::net::{IpAddr, SocketAddr, SocketAddrV4};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -6,12 +7,14 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
 use log::{debug, error, info};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use rustls::pki_types::ServerName;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{Mutex, MutexGuard};
 use tokio::task::JoinHandle;
+use tokio_rustls::TlsConnector;
 
 use crate::network::handle_message;
 use crate::network::protocol::UserStatus;
@@ -33,36 +36,40 @@ pub enum ServerConnectionStatus {
     Reconnecting,
 }
 
-#[derive(Clone)]
-pub struct InteractedTimeStamp {
-    inner: Arc<AtomicU64>,
+#[derive(Debug, PartialEq, Clone, Eq, Hash)]
+pub enum ConnectionType {
+    Raw,
+    #[allow(clippy::upper_case_acronyms)]
+    TLS, // domain name for TLS
 }
 
-impl InteractedTimeStamp {
-    pub fn new() -> Self {
-        InteractedTimeStamp {
-            inner: Arc::new(AtomicU64::new(0)),
-        }
-    }
+#[derive(Debug, Clone)]
+pub struct ServerAddrInfo {
+    pub ip: IpAddr,
+    pub port: u16,
+    pub domain: Option<String>,
+    pub connection_type: ConnectionType,
+}
 
-    fn now_millis() -> u64 {
-        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64
-    }
-
-    pub fn update(&self) {
-        self.inner.store(Self::now_millis(), Ordering::Relaxed);
-    }
-
-    pub fn elapsed(&self) -> Duration {
-        let now = Self::now_millis();
-        let last = self.inner.load(Ordering::Relaxed);
-        Duration::from_millis(now.saturating_sub(last))
+// PartialEq and Eq that excludes domain
+impl PartialEq for ServerAddrInfo {
+    fn eq(&self, other: &Self) -> bool {
+        self.ip == other.ip && self.port == other.port && self.connection_type == other.connection_type
     }
 }
 
+impl Eq for ServerAddrInfo {}
+
+// Hash that excludes domain
+impl Hash for ServerAddrInfo {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.ip.hash(state);
+        self.port.hash(state);
+        self.connection_type.hash(state);
+    }
+}
 pub struct Client {
-    is_connected: bool,
-    write_stream: Option<Arc<Mutex<OwnedWriteHalf>>>,
+    write_stream: Option<Arc<Mutex<Box<dyn AsyncWrite + Send + Unpin>>>>,
     event_send: Sender<TuiEvent>,
     recv_handle: Option<JoinHandle<()>>,
     pub time_since_last_transmit: InteractedTimeStamp,
@@ -73,7 +80,6 @@ pub struct Client {
 impl Client {
     pub fn new(event_send: Sender<TuiEvent>) -> Self {
         Client {
-            is_connected: false,
             write_stream: None,
             event_send,
             recv_handle: None,
@@ -83,32 +89,65 @@ impl Client {
         }
     }
 
-    pub async fn get_stream(&'_ mut self) -> Result<MutexGuard<'_, OwnedWriteHalf>> {
+    pub async fn get_stream(&'_ mut self) -> Result<MutexGuard<'_, Box<dyn AsyncWrite + Send + Unpin>>> {
         Ok(self.write_stream.as_mut().ok_or_else(|| anyhow!("Not connected to server"))?.lock().await)
     }
 
-    pub async fn connect(&mut self, target_addr: SocketAddr) -> Result<()> {
-        if self.is_connected {
-            return Err(anyhow!("Already connected to {}", target_addr));
+    pub async fn connect(&mut self, server_connection: &ServerAddrInfo) -> Result<()> {
+        if self.write_stream.is_some() {
+            if let Some(domain) = &server_connection.domain {
+                return Err(anyhow!(
+                    "Already connected to {domain}:{} ({})",
+                    server_connection.port,
+                    server_connection.ip
+                ));
+            } else {
+                return Err(anyhow!("Already connected to {}:{}", server_connection.port, server_connection.ip));
+            }
         }
 
-        let connection = TcpStream::connect(target_addr).await?;
-        let (read_stream, write_stream) = connection.into_split();
-        let write_stream = Arc::new(Mutex::new(write_stream));
-        let src_addr = read_stream.local_addr().unwrap();
+        let target_addr = SocketAddr::new(server_connection.ip, server_connection.port);
+        let connection_tcp = TcpStream::connect(target_addr).await?;
+        let src_addr = connection_tcp.local_addr().unwrap();
 
-        self.write_stream = Some(write_stream.clone());
-        info!("Connected to {target_addr} from {src_addr}");
+        match server_connection.connection_type {
+            ConnectionType::Raw => {
+                let (read_stream, write_stream) = connection_tcp.into_split();
 
-        self.recv_handle = Some(self.receiving_task(read_stream).await);
-        self.event_send.send(TuiEvent::HealthCheckRecv).await?;
-        self.connection_status = ServerConnectionStatus::Connected;
+                info!("Connected to {target_addr} from {src_addr}");
+                self.write_stream = Some(Arc::new(Mutex::new(Box::new(write_stream))));
+                self.recv_handle = Some(self.receiving_task(Box::new(read_stream)).await);
+                self.connection_status = ServerConnectionStatus::Connected;
+            }
+            ConnectionType::TLS => {
+                if let Some(domain) = server_connection.domain.clone() {
+                    // Source: https://docs.rs/rustls/latest/rustls/
+                    let root_store = rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+
+                    let config = rustls::ClientConfig::builder().with_root_certificates(root_store).with_no_client_auth();
+
+                    let connector = TlsConnector::from(Arc::new(config));
+
+                    let domain_name = ServerName::try_from(domain)?;
+
+                    let connection_tls = connector.connect(domain_name, connection_tcp).await?;
+                    let (read_stream, write_stream) = tokio::io::split(connection_tls);
+
+                    info!("Connected to {target_addr} from {src_addr} over TLS");
+                    self.write_stream = Some(Arc::new(Mutex::new(Box::new(write_stream))));
+                    self.recv_handle = Some(self.receiving_task(Box::new(read_stream)).await);
+                    self.connection_status = ServerConnectionStatus::Connected;
+                } else {
+                    return Err(anyhow!("TLS requires a domain"));
+                }
+            }
+        };
+
         Ok(())
     }
 
     pub fn disconnect(&mut self) -> Result<()> {
         self.write_stream = None;
-        self.is_connected = false;
         if let Some(recv_handle) = &self.recv_handle {
             recv_handle.abort();
         }
@@ -117,7 +156,7 @@ impl Client {
         Ok(())
     }
 
-    pub async fn reconnect(&mut self, server_address: SocketAddr, username: String, password: String) -> Result<()> {
+    pub async fn reconnect(&mut self, server_address: &ServerAddrInfo, username: String, password: String) -> Result<()> {
         self.disconnect()?;
         self.connection_status = ServerConnectionStatus::Reconnecting;
         self.connect(server_address).await?;
@@ -264,7 +303,7 @@ impl Client {
         .await
     }
 
-    async fn receiving_task(&mut self, mut read_stream: OwnedReadHalf) -> JoinHandle<()> {
+    async fn receiving_task(&mut self, mut read_stream: Box<dyn AsyncRead + Send + Unpin>) -> JoinHandle<()> {
         info!("Started receiving task");
         let write_stream = self.write_stream.clone();
         let event_send = self.event_send.clone();
@@ -302,7 +341,7 @@ impl Client {
 // Actual sending and receiving functions
 impl Client {
     pub async fn send_message(
-        stream: &mut OwnedWriteHalf,
+        stream: &mut Box<dyn AsyncWrite + Send + Unpin>,
         transmission_timestamp: InteractedTimeStamp,
         packet_type: ClientPacketType,
         payload: ClientPayload,
@@ -327,7 +366,7 @@ impl Client {
     }
 
     pub async fn read_message(
-        stream: &mut OwnedReadHalf,
+        stream: &mut Box<dyn AsyncRead + Send + Unpin>,
         transmission_timestamp: InteractedTimeStamp,
         header_buffer: &mut [u8],
         payload_buffer: &mut [u8],
@@ -355,5 +394,32 @@ impl Client {
         debug!("Deserialized payload {payload:?}");
         transmission_timestamp.update();
         Ok(payload)
+    }
+}
+
+#[derive(Clone)]
+pub struct InteractedTimeStamp {
+    inner: Arc<AtomicU64>,
+}
+
+impl InteractedTimeStamp {
+    pub fn new() -> Self {
+        InteractedTimeStamp {
+            inner: Arc::new(AtomicU64::new(0)),
+        }
+    }
+
+    fn now_millis() -> u64 {
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64
+    }
+
+    pub fn update(&self) {
+        self.inner.store(Self::now_millis(), Ordering::Relaxed);
+    }
+
+    pub fn elapsed(&self) -> Duration {
+        let now = Self::now_millis();
+        let last = self.inner.load(Ordering::Relaxed);
+        Duration::from_millis(now.saturating_sub(last))
     }
 }

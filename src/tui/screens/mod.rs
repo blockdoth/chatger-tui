@@ -11,7 +11,7 @@ use tokio::sync::mpsc::{self, Sender};
 use tokio::time::Instant;
 
 use crate::cli::AppConfig;
-use crate::network::client::{Client, ServerConnectionStatus};
+use crate::network::client::{Client, ServerAddrInfo, ServerConnectionStatus};
 use crate::tui::events::TuiEvent;
 use crate::tui::framework::{Tui, TuiRunner};
 use crate::tui::logs::LogEntry;
@@ -26,7 +26,7 @@ const USER_TIME_UNTIL_IDLE: u64 = 60;
 
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum Screen {
-    Chat(String, String, String),
+    Chat(String, String, ServerAddrInfo),
     Login,
 }
 

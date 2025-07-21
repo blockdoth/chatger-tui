@@ -15,6 +15,9 @@ async-trait = "0.1.88"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 anyhow = "1.0.98"
 clap = { version = "4.5.40", default-features = false, features = ["derive", "std"] }
+rustls = "0.23.29"
+tokio-rustls = "0.26.2"
+webpki-roots = "1.0.2"
 
 [lints.rust]
 unused_imports = "allow"

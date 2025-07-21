@@ -2,7 +2,7 @@ use anyhow::Result;
 use tokio::sync::mpsc;
 
 use crate::cli::AppConfig;
-use crate::network::client::Client;
+use crate::network::client::{Client, ConnectionType};
 use crate::tui::events::TuiEvent;
 use crate::tui::framework::TuiRunner;
 use crate::tui::screens::login::{InputStatus, LoginFocus, LoginState};
@@ -16,8 +16,6 @@ pub mod screens;
 pub async fn run(config: AppConfig) -> Result<()> {
     let (event_send, event_recv) = mpsc::channel::<TuiEvent>(10);
 
-    let client = Client::new(event_send.clone());
-
     let tasks = vec![async move {}];
 
     let login_state = AppState::Login(LoginState {
@@ -27,7 +25,10 @@ pub async fn run(config: AppConfig) -> Result<()> {
         server_address: None,
         focus: LoginFocus::Nothing,
         input_status: InputStatus::AllFine,
+        enable_tls: config.enable_tls,
     });
+
+    let client = Client::new(event_send.clone());
 
     let tui = State::new(login_state);
 

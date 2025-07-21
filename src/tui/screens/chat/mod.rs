@@ -11,7 +11,7 @@ use log::{debug, error, info};
 use tokio::sync::mpsc::Sender;
 use tokio::time::Instant;
 
-use crate::network::client::{Client, ServerConnectionStatus};
+use crate::network::client::{Client, ServerAddrInfo, ServerConnectionStatus};
 use crate::network::protocol::UserStatus;
 use crate::tui::chat::{ChatMessage, ChatMessageStatus, DisplayChannel, User};
 use crate::tui::events::{ChannelId, MessageId, TuiEvent, UserId};
@@ -46,7 +46,7 @@ pub struct ChatState {
     pub active_channel_idx: usize,
     pub current_user: UserProfile,
     pub chat_scroll_offset: usize,
-    pub server_address: SocketAddr,
+    pub server_address: ServerAddrInfo,
     pub server_connection_status: ServerConnectionStatus,
     pub waiting_message_acks_id: VecDeque<MessageId>,
     pub incrementing_ack_id: MessageId,
@@ -385,7 +385,7 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, client: &mut Cl
                     Screen::Chat(
                         user.username.trim().to_string(),
                         user.password.trim().to_string(),
-                        chat_state.server_address.to_string(),
+                        chat_state.server_address.clone(),
                     ),
                     AppState::Chat(chat_state.clone()),
                 );
@@ -429,7 +429,7 @@ pub async fn handle_chat_event(tui: &mut State, event: TuiEvent, client: &mut Cl
             info!("Attempting to reconnect to {:?}", chat_state.server_address);
             client
                 .reconnect(
-                    chat_state.server_address,
+                    &chat_state.server_address,
                     chat_state.current_user.username.clone(),
                     chat_state.current_user.password.clone(),
                 )

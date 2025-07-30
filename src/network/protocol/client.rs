@@ -137,7 +137,7 @@ impl Serialize for Anchor {
     fn serialize(self) -> Vec<u8> {
         match self {
             Anchor::Timestamp(anchor) => anchor.to_be_bytes().to_vec(),
-            Anchor::MessageId(anchor) => anchor.to_be_bytes().to_vec(),
+            Anchor::MessageId(anchor) => todo!(),
         }
     }
 }

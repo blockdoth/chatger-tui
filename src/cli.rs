@@ -25,7 +25,7 @@ pub struct CliArgs {
     pub username: String,
 
     /// Password
-    #[arg(long, default_value = "password6")]
+    #[arg(long, default_value = "epicpass4")]
     pub password: String,
 
     /// Log level (error, warn, info, debug, trace)

@@ -167,6 +167,7 @@ pub async fn handle_login_event(tui: &mut State, event: TuiEvent, client: &mut C
                     }
 
                     let addr = possible_server_addrs.remove(0);
+                    debug!("Resolved {addr} from DNS");
 
                     ServerAddrInfo {
                         ip: addr.ip(),

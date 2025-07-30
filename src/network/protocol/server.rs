@@ -1,5 +1,5 @@
 use anyhow::{Result, anyhow};
-use log::info;
+use log::{debug, error, info};
 
 use crate::network::client::MAX_MESSAGE_LENGTH;
 use crate::network::protocol::{MediaType, UserStatus};
@@ -453,7 +453,6 @@ impl Deserialize for HistoryMessage {
         let reply_id = MessageId::from_be_bytes(bytes[32..40].try_into()?);
 
         let message_len = u16::from_be_bytes(bytes[40..42].try_into()?) as usize;
-
         let message_text = String::from_utf8(bytes[42..42 + message_len].to_vec())?;
         let mut byte_index = 42 + message_len;
 

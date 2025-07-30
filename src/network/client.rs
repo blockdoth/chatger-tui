@@ -106,7 +106,6 @@ impl Client {
                 return Err(anyhow!("Already connected to {}:{}", server_connection.port, server_connection.ip));
             }
         }
-
         let target_addr = SocketAddr::new(server_connection.ip, server_connection.port);
         let connection_tcp = TcpStream::connect(target_addr).await?;
         let src_addr = connection_tcp.local_addr().unwrap();
@@ -128,16 +127,15 @@ impl Client {
                     let config = rustls::ClientConfig::builder().with_root_certificates(root_store).with_no_client_auth();
 
                     let connector = TlsConnector::from(Arc::new(config));
-
                     let domain_name = ServerName::try_from(domain)?;
 
                     let connection_tls = connector.connect(domain_name, connection_tcp).await?;
                     let (read_stream, write_stream) = tokio::io::split(connection_tls);
 
-                    info!("Connected to {target_addr} from {src_addr} over TLS");
                     self.write_stream = Some(Box::new(write_stream));
                     self.recv_handle = Some(self.receiving_task(Box::new(read_stream)).await);
                     self.connection_status = ServerConnectionStatus::Connected;
+                    info!("Connected to {target_addr} from {src_addr} over TLS");
                 } else {
                     return Err(anyhow!("TLS requires a domain"));
                 }
@@ -358,6 +356,8 @@ impl Client {
         stream.read_exact(&mut header_buffer[..]).await?;
 
         debug!("Received header bytes {header_buffer:?}");
+        // [67, 72, 84, 71,  1,  1,  0,  0,  0, 1 ]
+        // [72, 84, 84, 80, 47, 49, 46, 49, 32, 52]
         let header = Header::deserialize(header_buffer)?.0;
         debug!("Received {header:?}");
 

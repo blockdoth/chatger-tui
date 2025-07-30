@@ -17,7 +17,6 @@ pub fn handle_login_key_event(event: Event, focus: LoginFocus) -> Option<TuiEven
                 Down | Tab | Enter => Some(TuiEvent::LoginFocusChange(LoginFocus::PasswordInput(idx))),
                 Backspace => Some(TuiEvent::InputDelete),
                 Esc => Some(TuiEvent::LoginFocusChange(LoginFocus::Nothing)),
-                Char('l') | Char('L') => Some(TuiEvent::ToggleLogs),
                 Char(chr) => Some(TuiEvent::InputChar(chr)),
 
                 _ => None,
@@ -31,7 +30,6 @@ pub fn handle_login_key_event(event: Event, focus: LoginFocus) -> Option<TuiEven
                 Right => Some(TuiEvent::InputRight),
                 Backspace => Some(TuiEvent::InputDelete),
                 Esc => Some(TuiEvent::LoginFocusChange(LoginFocus::Nothing)),
-                Char('l') | Char('L') => Some(TuiEvent::ToggleLogs),
                 Char(chr) => Some(TuiEvent::InputChar(chr)),
                 _ => None,
             },
@@ -44,7 +42,6 @@ pub fn handle_login_key_event(event: Event, focus: LoginFocus) -> Option<TuiEven
                 Right => Some(TuiEvent::InputRight),
                 Backspace => Some(TuiEvent::InputDelete),
                 Esc => Some(TuiEvent::LoginFocusChange(LoginFocus::Nothing)),
-                Char('l') | Char('L') => Some(TuiEvent::ToggleLogs),
                 Char(chr) => Some(TuiEvent::InputChar(chr)),
                 _ => None,
             },

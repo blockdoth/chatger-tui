@@ -70,7 +70,7 @@ impl DeserializeByte for PacketType {
     fn deserialize_byte(byte: u8) -> Result<Self> {
         // high bit (0x80) indicates Client
         if byte & 0x80 == 0 {
-            let packet_type = ServerPacketType::deserialize_byte(byte)?; // Ugly
+            let packet_type = ServerPacketType::deserialize_byte(byte)?;
             Ok(packet_type.into())
         } else {
             Err(anyhow!("Can not deserialize client packet, how did it get here {byte}"))

@@ -45,7 +45,7 @@ impl DeserializeByte for ServerPacketType {
             0x09 => Ok(Media),
             0x0A => Ok(Typing),
             0x0B => Ok(UserStatus),
-            other => Err(anyhow!("Unknown ServerPacketType value: {}", other)),
+            other => Err(anyhow!("Unknown ServerPacketType: {}", other)),
         }
     }
 }

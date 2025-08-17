@@ -1,6 +1,4 @@
 {
-  description = "The Sensei dev flake";
-
   inputs = {
     flake-parts.url = "github:hercules-ci/flake-parts";
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -13,8 +11,7 @@
       systems = [
         "x86_64-linux"
         "aarch64-linux"
-        "x86_64-darwin"
-        "aarch64-darwin"
+        "x86_64-windows"
       ];
       perSystem =
         {
@@ -27,8 +24,10 @@
           pkgs = import inputs.nixpkgs {
             inherit system;
             overlays = [ inputs.rust-overlay.overlays.default ];
+            crossSystem = if system == "x86_64-windows" then {
+              config = "x86_64-windows";
+            } else null; 
           };
-
           toolchain = pkgs.rust-bin.fromRustupToolchainFile ./toolchain.toml;
         in
         {
@@ -48,10 +47,11 @@
             src = ./.;
             cargoLock.lockFile = ./Cargo.lock;
             cargoToml = ./Cargo.toml;
+            release = true;
             nativeBuildInputs = with pkgs; [
               toolchain
             ];
-          };    
+          };
         };
     };
 }

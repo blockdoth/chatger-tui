@@ -1,0 +1,57 @@
+name: Check and build chatger-tui
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*.*.*"
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  check_nix:
+    name: Check chatger-tui
+    runs-on: ubuntu-22.04
+    steps:
+      - name: git checkout
+        uses: actions/checkout@v3
+      
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Check Rust formatting
+        run: |
+          nix develop --command cargo fmt --check
+      - name: Check Rust linting
+        run: |
+          nix develop --command cargo clippy
+
+
+  build_nix:
+    name: Builds chatger-tui
+    needs: check_nix
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, macos-12]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: git checkout
+        uses: actions/checkout@v3
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: Set up Rust cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: chatger-tui-${{ hashFiles('**/Cargo.lock') }}
+      - name: Build chatger-tui
+        run: nix build .

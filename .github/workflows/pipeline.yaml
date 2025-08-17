@@ -6,9 +6,6 @@ on:
       - main
     tags:
       - "v*.*.*"
-  pull_request:
-    branches:
-      - main
 
 jobs:
   check_nix:
@@ -36,7 +33,7 @@ jobs:
     strategy:
       matrix:
         os: [ self-hosted ]
-        target: [x86_64-linux, aarch64-linux]
+        target: [x86_64-linux]
     runs-on: ${{ matrix.os }}
     steps:
       - name: git checkout

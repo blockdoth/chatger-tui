@@ -6,6 +6,10 @@ on:
       - main
     tags:
       - "v*.*.*"
+      
+permissions:
+  id-token: write
+  contents: read  
 
 jobs:
   check_nix:

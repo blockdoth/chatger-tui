@@ -11,6 +11,8 @@
       systems = [
         "x86_64-linux"
         "aarch64-linux"
+        "x86_64-darwin"
+        "aarch64-darwin"
       ];
       perSystem =
         {
@@ -22,24 +24,52 @@
         let
           pkgs = import inputs.nixpkgs {
             inherit system;
-            overlays = [ 
-              inputs.rust-overlay.overlays.default 
-          #     (final: prev: {
-          #       rhash = prev.rhash.overrideAttrs (old: {
-          #         dontFixup = true;
-          #       });
-          #     })  
+            overlays = [ inputs.rust-overlay.overlays.default ];
+          };       
+          crossAarchPkgs = import inputs.nixpkgs {
+            system = "x86_64-linux";
+            crossSystem = pkgs.lib.systems.examples.aarch64-multiplatform;
+            overlays = [ inputs.rust-overlay.overlays.default ];
+          };          
+          crossWindowsPkgs = import inputs.nixpkgs {
+            inherit system;
+            crossSystem = pkgs.lib.systems.examples.mingwW64;
+            overlays = [
+              inputs.rust-overlay.overlays.default
+              (final: prev: {
+                rhash = prev.rhash.overrideAttrs (old: { dontFixup = true; });     
+              })            
             ];
-          #   crossSystem =
-          #     if system == "x86_64-windows" then
-          #       {
-          #         config = "x86_64-w64-mingw32";
-          #       }
-          #     else
-          #       null;
           };
-          windowsPkgs = inputs.nixpkgs.legacyPackages."${system}".pkgsCross.mingwW64;
           toolchain = pkgs.rust-bin.fromRustupToolchainFile ./toolchain.toml;
+          
+          pkgX86_64-linux = pkgs.rustPlatform.buildRustPackage {
+            pname = "chatgertui";
+            version = "0.1.0";
+            src = ./.;
+            cargoLock.lockFile = ./Cargo.lock;
+            cargoToml = ./Cargo.toml;
+            release = true;
+            nativeBuildInputs = [ toolchain ];
+          };
+          pkgAarch64-linux = crossAarchPkgs.rustPlatform.buildRustPackage {
+            pname = "chatgertui";
+            version = "0.1.0";
+            src = ./.;
+            cargoLock.lockFile = ./Cargo.lock;
+            cargoToml = ./Cargo.toml;
+            release = true;
+            nativeBuildInputs = [ toolchain ];
+          };
+          pkgWindows = crossWindowsPkgs.rustPlatform.buildRustPackage {
+            pname = "chatgertui";
+            version = "0.1.0";
+            src = ./.;
+            cargoLock.lockFile = ./Cargo.lock;
+            cargoToml = ./Cargo.toml;
+            release = true;
+            nativeBuildInputs = [ toolchain ];
+          };          
         in
         {
           devShells.default = pkgs.mkShell {
@@ -48,35 +78,14 @@
               rust-analyzer-unwrapped
               mprocs
             ];
-
             RUST_SRC_PATH = "${toolchain}/lib/rustlib/src/rust/library";
           };
 
           packages = {
-            default = pkgs.rustPlatform.buildRustPackage {
-              pname = "chatgertui";
-              version = "0.1.0";
-              src = ./.;
-              cargoLock.lockFile = ./Cargo.lock;
-              cargoToml = ./Cargo.toml;
-              release = true;
-              nativeBuildInputs = with pkgs; [
-                toolchain
-              ];
-            };
-            # windows = windowsPkgs.rustPlatform.buildRustPackage {
-            #   pname = "chatgertui";
-            #   version = "0.1.0";
-            #   src = ./.;
-            #   cargoLock.lockFile = ./Cargo.lock;
-            #   cargoToml = ./Cargo.toml;
-            #   release = true;
-            #   nativeBuildInputs = with windowsPkgs; [
-            #      cmake
-            #      windows.pthreads
-            #      toolchain 
-            #   ];
-            # };
+            default = pkgX86_64-linux;
+            x86_64-linux = pkgX86_64-linux;
+            aarch64-linux = pkgAarch64-linux;
+            windows = pkgWindows;
           };
         };
     };

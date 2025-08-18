@@ -7,10 +7,6 @@ on:
     tags:
       - "v*.*.*"
 
-permissions:
-  id-token: write
-  contents: read  
-
 jobs:
   checks:
     name: Check chatger-tui
@@ -22,17 +18,13 @@ jobs:
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/magic-nix-cache-action@main
-        with:
-          enable: true
-          use-flake-cache: true
 
       - name: Check Rust formatting
         run: |
           nix develop --command cargo fmt --check
       - name: Check Rust linting
         run: |
-          nix develop --command cargo clippy
-
+          nix develop --command cargo clippy --no-deps
 
   build:
     name: Builds chatger-tui

@@ -1,4 +1,3 @@
-use std::fs;
 use std::iter::repeat;
 
 use ratatui::Frame;
@@ -236,21 +235,12 @@ fn render_login(_global_state: &GlobalState, login_state: &LoginState, frame: &m
     frame.render_widget(login_block, login_button_area);
 }
 
-const PENGER_FILE_PATH: &str = "./assets/penger.txt"; // TODO hardcode in a better way
-const PENGER_TITLE_FILE_PATH: &str = "./assets/penger_title.txt";
+const PENGERS: &str = include_str!("../../../../assets/penger.txt");
+const PENGER_TITLE: &str = include_str!("../../../../assets/penger_title.txt");
 
 fn render_background(_global_state: &GlobalState, _login_state: &LoginState, frame: &mut Frame, area: Rect) {
-    let penger = match fs::read_to_string(PENGER_FILE_PATH) {
-        Ok(penger) => penger,
-        Err(e) => format!("{e}"),
-    };
-    let penger_title = match fs::read_to_string(PENGER_TITLE_FILE_PATH) {
-        Ok(penger) => penger,
-        Err(e) => format!("{e}"),
-    };
-
-    let penger_lines: Vec<&str> = penger.lines().collect();
-    let title_lines: Vec<&str> = penger_title.lines().collect();
+    let penger_lines: Vec<&str> = PENGERS.lines().collect();
+    let title_lines: Vec<&str> = PENGER_TITLE.lines().collect();
 
     let max_lines = penger_lines.len().max(title_lines.len());
 

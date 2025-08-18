@@ -16,41 +16,7 @@ jobs:
     steps:
       - name: git checkout
         uses: actions/checkout@v3
-      
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@main
-      
-      - name: Setup nix cache
-        uses: DeterminateSystems/magic-nix-cache-action@main
-      
-      - name: Cache Nix store
-        uses: actions/cache@v3
-        with:
-          path: /nix/store
-          key: nix-store-${{ runner.os }}-${{ hashFiles('**/*.nix') }}
-          restore-keys: |
-            nix-store-${{ runner.os }}-
-  checks:
-    name: Check chatger-tui
-    needs: setup
-    runs-on: self-hosted
-    steps:
-      - name: Check Rust formatting
-        run: |
-          nix develop --command cargo fmt --check
-      - name: Check Rust linting
-        run: |
-          nix develop --command cargo clippy --no-deps
 
-  build:
-    name: Builds chatger-tui
-    needs: checks
-    strategy:
-      matrix:
-        os: [ self-hosted ]
-        target: [x86_64-linux, aarch64-linux, windows]
-    runs-on: ${{ matrix.os }}
-    steps:
       - name: Set up Cargo registry cache
         uses: actions/cache@v3
         with:
@@ -79,6 +45,27 @@ jobs:
           restore-keys: |
             target-${{ matrix.target }}-
 
+  checks:
+    name: Check chatger-tui
+    needs: setup
+    runs-on: self-hosted
+    steps:
+      - name: Check Rust formatting
+        run: |
+          nix develop --command cargo fmt --check
+      - name: Check Rust linting
+        run: |
+          nix develop --command cargo clippy --no-deps
+
+  build:
+    name: Builds chatger-tui
+    needs: checks
+    strategy:
+      matrix:
+        os: [ self-hosted ]
+        target: [x86_64-linux, aarch64-linux, windows]
+    runs-on: ${{ matrix.os }}
+    steps:
       - name: Build chatger-tui for ${{ matrix.target }}
         run: nix build .#${{ matrix.target }}
      

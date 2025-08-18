@@ -8,17 +8,33 @@ on:
       - "v*.*.*"
 
 jobs:
-  checks:
-    name: Check chatger-tui
+  setup:
+    name: Setup build env
     runs-on: self-hosted
+    outputs:
+      cache-key: ${{ steps.setup.outputs.cache-key }}
     steps:
       - name: git checkout
         uses: actions/checkout@v3
       
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
-
+      
+      - name: Setup nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+      
+      - name: Cache Nix store
+        uses: actions/cache@v3
+        with:
+          path: /nix/store
+          key: nix-store-${{ runner.os }}-${{ hashFiles('**/*.nix') }}
+          restore-keys: |
+            nix-store-${{ runner.os }}-
+  checks:
+    name: Check chatger-tui
+    needs: setup
+    runs-on: self-hosted
+    steps:
       - name: Check Rust formatting
         run: |
           nix develop --command cargo fmt --check
@@ -35,24 +51,34 @@ jobs:
         target: [x86_64-linux, aarch64-linux, windows]
     runs-on: ${{ matrix.os }}
     steps:
-      - name: git checkout
-        uses: actions/checkout@v3
-   
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
-   
-      - name: Set up Rust cache
+      - name: Set up Cargo registry cache
         uses: actions/cache@v3
         with:
           path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
+            ~/.cargo/registry/index
+          key: cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-index-
+
+      - name: Set up Cargo cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-cache-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-cache-
+            cargo-git-
+
+      - name: Cache target build outputs
+        uses: actions/cache@v3
+        with:
+          path: |
             target/${{ matrix.target }}
-          key: chatger-tui-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.target }}
-      
+          key: target-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            target-${{ matrix.target }}-
+
       - name: Build chatger-tui for ${{ matrix.target }}
         run: nix build .#${{ matrix.target }}
      
@@ -68,9 +94,6 @@ jobs:
     runs-on: self-hosted
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
       - name: Upload release artifact to release
         uses: actions/download-artifact@v3
         with:

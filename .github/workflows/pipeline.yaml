@@ -15,33 +15,30 @@ jobs:
       - name: git checkout
         uses: actions/checkout@v3
 
-      - name: Set up Cargo registry cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/registry/index
-          key: cargo-index-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: cargo-index-
-
       - name: Set up Cargo cache
         uses: actions/cache@v3
         with:
           path: |
+            ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: cargo-cache-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             cargo-cache-
             cargo-git-
+            cargo-index-
 
-      - name: Cache target build outputs
+      - name: Install sccache
+        run: |
+          echo "RUSTC_WRAPPER=$(nix run nixpkgs#sccache --print-out-paths)/bin/sccache" >> $GITHUB_ENV
+
+      - name: Cache sccache
         uses: actions/cache@v3
         with:
-          path: |
-            target/${{ matrix.target }}
-          key: target-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          path: ~/.cache/sccache
+          key: sccache-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            target-${{ matrix.target }}-
+            sccache-${{ runner.os }}-
 
   checks:
     name: Check chatger-tui
@@ -53,7 +50,7 @@ jobs:
           nix develop --command cargo fmt --check
       - name: Check Rust linting
         run: |
-          nix develop --command cargo clippy --no-deps
+          nix develop --command cargo clippy --no-deps --frozen
 
   build:
     name: Builds chatger-tui

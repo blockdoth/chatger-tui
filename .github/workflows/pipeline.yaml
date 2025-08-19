@@ -82,7 +82,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: Upload release artifact to release
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: chatgertui-x86_64-linux
           path: ./release-artifact

@@ -28,18 +28,6 @@ jobs:
             cargo-git-
             cargo-index-
 
-      - name: Install sccache
-        run: |
-          echo "RUSTC_WRAPPER=$(nix run nixpkgs#sccache --print-out-paths)/bin/sccache" >> $GITHUB_ENV
-
-      - name: Cache sccache
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/sccache
-          key: sccache-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            sccache-${{ runner.os }}-
-
   checks:
     name: Check chatger-tui
     needs: setup
@@ -71,22 +59,33 @@ jobs:
           path: |
             ./result/bin/chatgertui
             ./result/bin/chatgertui.exe
-
+            
   release:
     name: Releases chatger-tui
     needs: build
     runs-on: self-hosted
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
-      - name: Upload release artifact to release
-        uses: actions/download-artifact@v4
+      - name: Download x86_64-linux artifact
+        uses: actions/download-artifact@v3
         with:
           name: chatgertui-x86_64-linux
-          path: ./release-artifact
+          path: ./artifacts/x86_64-linux
 
-      - name: Create GitHub Release
-        id: create_release
-        uses: actions/create-release@v1
+      - name: Download aarch64-linux artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: chatgertui-aarch64-linux
+          path: ./artifacts/aarch64-linux
+
+      - name: Download windows artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: chatgertui-windows.exe
+          path: ./artifacts/windows
+
+      - name: Create GitHub release
+        uses: actions/create-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           release_name: Release ${{ github.ref_name }}
@@ -95,12 +94,26 @@ jobs:
           body: "Automated release for version ${{ github.ref_name }}"
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload binary to release
+      - name: Upload x86_64-linux binary
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          path: |
-            ./result/bin/chatgertui
-            ./result/bin/chatgertui.exe
-          asset_name: chatgertui
+          path: ./artifacts/x86_64-linux/chatger-tui
+          asset_name: chatger-tui-x86_64-linux
+          asset_content_type: application/octet-stream
+
+      - name: Upload aarch64-linux binary
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          path: ./artifacts/aarch64-linux/chatgertui
+          asset_name: chatger-tui-aarch64-linux
+          asset_content_type: application/octet-stream
+
+      - name: Upload Windows binary
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          path: ./artifacts/windows/chatgertui.exe
+          asset_name: chatger-tui-windows.exe
           asset_content_type: application/octet-stream

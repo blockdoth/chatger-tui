@@ -4,8 +4,16 @@ TUI client implementation for the Penger Protocol
 
 # Requirements
 
-A server implementing the Penger Protocol, I used the chatger server from [Link when Solarium Technology is not down]
+A server implementing the Penger Protocol, get the reference implementation from [Solarium.technology](https://solarium.technology/projects/chatger) or [my elixir implementation](https://github.com/blockdoth/chatger-elixir) 
 
+# Supported architectures
+| Architecture   | Build Support | Tested  | Cross compileable | Releases 
+|----------------|---------------|---------|-------------------|----------|
+| x86_64-linux   | X             | X       | X                 | X        |
+| aarch64-linux  | X             |         | X                 | X        |
+| x86_64-darwin  | X             |         |                   |          |
+| aarch64-darwin | X             | X       |                   |          |
+| windows        | X             |         | X                 | X        |
 
 # Build
 
@@ -21,13 +29,22 @@ nix run github:blockdoth/chatger-tui
 git clone git@github.com:blockdoth/chatger-tui.git
 nix build
 ```
-Or alternatively (faster because of caching)
+Or alternatively for repeated builds (faster because of caching)
 
 ```
 git clone git@github.com:blockdoth/chatger-tui.git
 nix develop
 cargo build
 ```
+
+#### Cross compiling
+You can cross compile directly from the flake using the following commands 
+```
+nix build .#windows-cross
+nix build .#x86_64-linux-cross
+nix build .#aarch64-linux-cross
+```
+Be warned, windows packages are not cached in nixpkgs and the entire dependency tree must be build from scratch on first build
 
 ### Without nix
 

@@ -55,7 +55,7 @@ jobs:
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: chatgertui-${{ matrix.target }}
+          name: chatgertui-${{ matrix.target }}-cross | sed 's/-cross$//'
           path: |
             ./result/bin/chatgertui
             ./result/bin/chatgertui.exe

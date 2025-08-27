@@ -25,13 +25,23 @@
           pkgs = import inputs.nixpkgs {
             inherit system;
             overlays = [ inputs.rust-overlay.overlays.default ];
-          };       
-          crossAarchPkgs = import inputs.nixpkgs {
+          };
+          pkgsX86_64 = import inputs.nixpkgs {
             system = "x86_64-linux";
+            overlays = [ inputs.rust-overlay.overlays.default ];
+          };  
+
+          crossPkgsAarch = import inputs.nixpkgs {
+            inherit system;
             crossSystem = pkgs.lib.systems.examples.aarch64-multiplatform;
             overlays = [ inputs.rust-overlay.overlays.default ];
-          };          
-          crossWindowsPkgs = import inputs.nixpkgs {
+          };     
+          crossPkgsX86_64 = import inputs.nixpkgs {
+            inherit system;
+            crossSystem = pkgs.lib.systems.examples.x86_64-linux;
+            overlays = [ inputs.rust-overlay.overlays.default ];
+          };        
+          crossPkgsWindows = import inputs.nixpkgs {
             inherit system;
             crossSystem = pkgs.lib.systems.examples.mingwW64;
             overlays = [
@@ -43,7 +53,7 @@
           };
           toolchain = pkgs.rust-bin.fromRustupToolchainFile ./toolchain.toml;
           
-          pkgX86_64-linux = pkgs.rustPlatform.buildRustPackage {
+          buildPackage = pkgs: pkgs.rustPlatform.buildRustPackage {
             pname = "chatgertui";
             version = "0.1.0";
             src = ./.;
@@ -52,24 +62,14 @@
             release = true;
             nativeBuildInputs = [ toolchain ];
           };
-          pkgAarch64-linux = crossAarchPkgs.rustPlatform.buildRustPackage {
-            pname = "chatgertui";
-            version = "0.1.0";
-            src = ./.;
-            cargoLock.lockFile = ./Cargo.lock;
-            cargoToml = ./Cargo.toml;
-            release = true;
-            nativeBuildInputs = [ toolchain ];
-          };
-          pkgWindows = crossWindowsPkgs.rustPlatform.buildRustPackage {
-            pname = "chatgertui";
-            version = "0.1.0";
-            src = ./.;
-            cargoLock.lockFile = ./Cargo.lock;
-            cargoToml = ./Cargo.toml;
-            release = true;
-            nativeBuildInputs = [ toolchain ];
-          };          
+
+          currentSystemPkg = buildPackage pkgs;
+          x86_64-linux = buildPackage pkgsX86_64;
+
+          x86_64-linux-cross = buildPackage crossPkgsX86_64;
+          aarch64-linux-cross = buildPackage crossPkgsAarch;
+          windows-cross = buildPackage crossPkgsWindows;
+
         in
         {
           devShells.default = pkgs.mkShell {
@@ -82,10 +82,11 @@
           };
 
           packages = {
-            default = pkgX86_64-linux;
-            x86_64-linux = pkgX86_64-linux;
-            aarch64-linux = pkgAarch64-linux;
-            windows = pkgWindows;
+            default = currentSystemPkg;
+            x86_64-linux = x86_64-linux; # Mainly added to make ci easier
+            x86_64-linux-cross = x86_64-linux-cross;
+            aarch64-linux-cross = aarch64-linux-cross;
+            windows-cross = windows-cross;
           };
         };
     };

@@ -468,7 +468,6 @@ fn render_users(_global_state: &GlobalState, chat_state: &ChatState, frame: &mut
     let (mut online_users, mut offline_users): (Vec<&User>, Vec<&User>) = chat_state
         .users
         .iter()
-        .filter(|user| chat_state.current_user.username != user.name)
         .partition(|user| matches!(user.status, UserStatus::Online | UserStatus::Idle | UserStatus::DoNotDisturb));
 
     online_users.sort_by_key(|user| &user.name);
